@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f1419" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Run-Nav — Suivi de course live</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%E2%9B%B0%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+
+  <!-- Leaflet (fond de carte) — vendorisé en local, aucune dépendance CDN -->
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <script src="vendor/leaflet/leaflet.js"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+</head>
+<body>
+  <!-- ====================== ÉCRAN D'ACCUEIL / UPLOAD ====================== -->
+  <div id="welcome" class="welcome">
+    <div class="welcome-card">
+      <div class="brand">
+        <span class="brand-logo">⛰️</span>
+        <h1>Run-Nav</h1>
+      </div>
+      <p class="tagline">Suivi live de tes trails &amp; épreuves vélo.<br>
+        Charge ta trace GPX, vois où tu en es dans chaque côte.</p>
+
+      <label class="upload-btn" for="gpx-input">
+        <span class="upload-icon">📂</span>
+        Charger un fichier GPX
+      </label>
+      <input id="gpx-input" type="file" accept=".gpx,application/gpx+xml,text/xml" hidden />
+
+      <button id="demo-btn" class="ghost-btn" type="button">Essayer avec un parcours démo</button>
+
+      <p id="welcome-error" class="welcome-error" hidden></p>
+
+      <ul class="features">
+        <li>🗺️ Fond topographique</li>
+        <li>📍 Position GPS en temps réel</li>
+        <li>📈 Profil altimétrique détaillé</li>
+        <li>⛰️ Détection des côtes &amp; % de pente</li>
+        <li>⏱️ Temps de passage recalculés live</li>
+      </ul>
+    </div>
+    <footer class="welcome-foot">Fonctionne dans le navigateur — aucune donnée envoyée.</footer>
+  </div>
+
+  <!-- ====================== APPLICATION ====================== -->
+  <div id="app" class="app" hidden>
+
+    <!-- Barre de stats haute -->
+    <header id="statbar" class="statbar">
+      <div class="stat">
+        <span class="stat-label">Distance</span>
+        <span class="stat-value" id="st-dist">–</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">D+ restant</span>
+        <span class="stat-value" id="st-climb">–</span>
+      </div>
+      <div class="stat highlight">
+        <span class="stat-label">Pente</span>
+        <span class="stat-value" id="st-grade">–</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Vitesse</span>
+        <span class="stat-value" id="st-speed">–</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Arrivée est.</span>
+        <span class="stat-value" id="st-eta">–</span>
+      </div>
+    </header>
+
+    <!-- Bandeau "côte en cours" -->
+    <div id="climb-banner" class="climb-banner" hidden>
+      <div class="cb-title">
+        <span class="cb-icon">⛰️</span>
+        <span id="cb-name">Côte en cours</span>
+      </div>
+      <div class="cb-grid">
+        <div><span class="cb-big" id="cb-togo">–</span><span class="cb-unit">au sommet</span></div>
+        <div><span class="cb-big" id="cb-ascent">–</span><span class="cb-unit">D+ restant</span></div>
+        <div><span class="cb-big" id="cb-avg">–</span><span class="cb-unit">pente moy.</span></div>
+      </div>
+      <div class="cb-progress">
+        <div class="cb-progress-fill" id="cb-fill"></div>
+        <span class="cb-progress-label" id="cb-pct">0 %</span>
+      </div>
+    </div>
+
+    <!-- Carte -->
+    <div id="map" class="map"></div>
+
+    <!-- Profil altimétrique -->
+    <div class="profile-wrap">
+      <div class="profile-toolbar">
+        <button class="pf-tab active" id="pf-full" type="button">Parcours complet</button>
+        <button class="pf-tab" id="pf-zoom" type="button">Côte en cours</button>
+        <div class="pf-spacer"></div>
+        <button class="pf-tool" id="pf-follow" type="button" title="Suivre ma position">📍 Suivi</button>
+      </div>
+      <canvas id="profile" class="profile-canvas"></canvas>
+      <div id="profile-tip" class="profile-tip" hidden></div>
+    </div>
+
+    <!-- Barre d'actions basse -->
+    <nav class="actionbar">
+      <button id="act-start" class="act primary" type="button">
+        <span class="act-ico">▶</span><span>Démarrer suivi GPS</span>
+      </button>
+      <button id="act-wpt" class="act" type="button" title="Ajouter un point de passage">
+        <span class="act-ico">📌</span><span>Point</span>
+      </button>
+      <button id="act-pace" class="act" type="button" title="Réglages allure">
+        <span class="act-ico">⚙️</span><span>Allure</span>
+      </button>
+      <button id="act-load" class="act" type="button" title="Charger un autre GPX">
+        <span class="act-ico">📂</span><span>GPX</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ====================== PANNEAU ALLURE / TEMPS DE PASSAGE ====================== -->
+  <div id="pace-sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-close></div>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>Allure &amp; temps de passage</h2>
+        <button class="sheet-close" data-close type="button">✕</button>
+      </div>
+
+      <div class="sheet-body">
+        <div class="field">
+          <label>Mode de calcul de l'allure</label>
+          <div class="seg">
+            <button class="seg-btn active" data-pacemode="live" type="button">Vitesse live</button>
+            <button class="seg-btn" data-pacemode="manual" type="button">Vitesse fixe</button>
+            <button class="seg-btn" data-pacemode="target" type="button">Temps cible</button>
+          </div>
+        </div>
+
+        <div class="field" id="field-manual" hidden>
+          <label>Vitesse moyenne visée (km/h)</label>
+          <input id="manual-speed" type="number" inputmode="decimal" min="1" max="60" step="0.5" value="12" />
+        </div>
+
+        <div class="field" id="field-target" hidden>
+          <label>Temps cible sur le parcours (hh:mm)</label>
+          <input id="target-time" type="text" inputmode="numeric" placeholder="04:30" value="04:30" />
+          <small class="hint">La vitesse est déduite de la distance totale.</small>
+        </div>
+
+        <div class="field">
+          <label>Départ prévu</label>
+          <div class="seg">
+            <button class="seg-btn active" data-startmode="now" type="button">Maintenant</button>
+            <button class="seg-btn" data-startmode="clock" type="button">Heure précise</button>
+          </div>
+          <input id="start-clock" type="time" hidden />
+        </div>
+
+        <h3 class="sub">Temps de passage</h3>
+        <p class="hint" id="pace-summary">–</p>
+        <div id="pace-table" class="pace-table"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Modules -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
