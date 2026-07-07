@@ -143,6 +143,7 @@
       <span class="lb-dot"></span>
       <span id="live-text" class="lb-text">En live</span>
       <div class="lb-actions">
+        <button id="follow-geo" class="lb-btn" type="button" hidden>📍 Ma position</button>
         <button id="live-share" class="lb-btn" type="button" hidden>🔗 Partager</button>
         <button id="live-feed" class="lb-btn" type="button" hidden>📷 <span id="feed-count">0</span></button>
         <button id="live-inbox" class="lb-btn" type="button" hidden>💬 <span id="inbox-count">0</span></button>
@@ -194,7 +195,7 @@
     <!-- Barre d'actions basse -->
     <nav class="actionbar">
       <button id="act-start" class="act primary" type="button">
-        <span class="act-ico">▶</span><span>Démarrer suivi GPS</span>
+        <span class="act-ico">▶</span><span>Démarrer</span>
       </button>
       <button id="act-wpt" class="act" type="button" title="Ajouter un point de passage">
         <span class="act-ico">📌</span><span>Point</span>
@@ -340,6 +341,7 @@
     <button class="mv-close" data-vclose type="button">✕</button>
     <div id="mv-body" class="mv-body"></div>
     <div id="mv-cap" class="mv-cap"></div>
+    <button id="mv-del" class="mv-del" type="button" hidden>🗑️ Supprimer ce média</button>
   </div>
 
   <!-- Fiche d'un point de passage -->

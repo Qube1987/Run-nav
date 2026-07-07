@@ -71,6 +71,24 @@ export async function uploadMedia(code, file, meta) {
   return rows[0];
 }
 
+/** Supprime un média (ligne + fichier) — réservé au propriétaire (RLS). */
+export async function deleteMedia(id, path) {
+  const res = await apiFetch(`/rest/v1/runnav_media?id=eq.${encodeURIComponent(id)}`, {
+    method: 'DELETE', headers: { Prefer: 'return=minimal' },
+  });
+  if (!res.ok) throw new Error('Suppression impossible (' + res.status + ')');
+  if (path) {
+    const s = getSession();
+    if (s && s.access_token) {
+      fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
+        method: 'DELETE',
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${s.access_token}` },
+      }).catch(() => { /* fichier orphelin toléré */ });
+    }
+  }
+  return true;
+}
+
 /** Liste les médias d'une course (les plus récents d'abord), ou seulement après `sinceIso`. */
 export async function fetchMedia(code, sinceIso) {
   let path = `/rest/v1/runnav_media?code=eq.${encodeURIComponent(code)}&select=*&order=created_at.desc`;

@@ -43,7 +43,21 @@ export class ProfileChart {
     this.render();
   }
   setWaypoints(wpts) { this.waypoints = wpts; this.render(); }
-  setMedia(list) { this.media = Array.isArray(list) ? list.filter((m) => m.d != null) : []; this.render(); }
+  setMedia(list) {
+    this.media = Array.isArray(list) ? list.filter((m) => m.d != null) : [];
+    // précharge les vignettes (dessin canvas) ; on ne lit jamais les pixels → le
+    // « tainting » cross-origin est sans conséquence.
+    if (!this._imgCache) this._imgCache = new Map();
+    for (const m of this.media) {
+      if (m.kind === 'video' || !m.url || this._imgCache.has(m.url)) continue;
+      const img = new Image();
+      img.onload = () => { img._ok = true; this.render(); };
+      img.onerror = () => { img._err = true; };
+      img.src = m.url;
+      this._imgCache.set(m.url, img);
+    }
+    this.render();
+  }
   setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
@@ -252,20 +266,16 @@ export class ProfileChart {
       ctx.fillText('⏱', fx, p.t + 1 * this.dpr);
     }
 
-    // --- médias géolocalisés (📷 cliquable, en haut de la courbe) ---
+    // --- médias géolocalisés : vraie vignette (cliquable, en haut de la courbe) ---
     for (const md of this.media) {
       if (md.d < d0 || md.d > d1) continue;
       const xx = x(md.d);
-      ctx.strokeStyle = withAlpha('#4aa3ff', 0.55); ctx.lineWidth = 1.2 * this.dpr;
-      ctx.setLineDash([2 * this.dpr, 3 * this.dpr]);
-      ctx.beginPath(); ctx.moveTo(xx, p.t + 18 * this.dpr); ctx.lineTo(xx, h - p.b); ctx.stroke();
-      ctx.setLineDash([]);
-      // pastille bleue + 📷
-      ctx.fillStyle = '#4aa3ff';
-      ctx.beginPath(); ctx.arc(xx, p.t + 9 * this.dpr, 10 * this.dpr, 0, Math.PI * 2); ctx.fill();
-      ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('📷', xx, p.t + 9 * this.dpr);
+      const sz = 26 * this.dpr;                 // côté de la vignette
+      const cy = p.t + sz / 2 + 1 * this.dpr;   // centre vertical (haut du graphe)
+      // fine ligne de repère vers la courbe
+      ctx.strokeStyle = withAlpha('#eaf0f6', 0.35); ctx.lineWidth = 1 * this.dpr;
+      ctx.beginPath(); ctx.moveTo(xx, cy + sz / 2); ctx.lineTo(xx, h - p.b); ctx.stroke();
+      this._mediaThumb(xx, cy, sz, md);
     }
 
     // --- curseur position ---
@@ -292,6 +302,52 @@ export class ProfileChart {
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
     ctx.lineWidth = 1.5 * this.dpr;
     ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+
+  _roundRect(x, y, w, h, r) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /** Vignette carrée arrondie d'un média, ombre + bordure blanche + badge vidéo. */
+  _mediaThumb(cx, cy, sz, md) {
+    const ctx = this.ctx, r = 5 * this.dpr;
+    const x0 = cx - sz / 2, y0 = cy - sz / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4 * this.dpr; ctx.shadowOffsetY = 1 * this.dpr;
+    this._roundRect(x0, y0, sz, sz, r);
+    ctx.fillStyle = '#20303f'; ctx.fill();
+    ctx.restore();
+    ctx.save();
+    this._roundRect(x0, y0, sz, sz, r); ctx.clip();
+    const img = this._imgCache && this._imgCache.get(md.url);
+    if (md.kind !== 'video' && img && img._ok && img.naturalWidth) {
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      const scale = Math.max(sz / iw, sz / ih);
+      const dw = iw * scale, dh = ih * scale;
+      ctx.drawImage(img, x0 + (sz - dw) / 2, y0 + (sz - dh) / 2, dw, dh);
+    } else {
+      ctx.fillStyle = '#eaf0f6';
+      ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(md.kind === 'video' ? '🎬' : '📷', cx, cy);
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * this.dpr;
+    this._roundRect(x0, y0, sz, sz, r); ctx.stroke();
+    if (md.kind === 'video') {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath(); ctx.arc(cx, cy, 7 * this.dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `${9 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('▶', cx + 0.5 * this.dpr, cy);
+    }
   }
 
   // Interaction : survol/tap pour lire un point (renvoie via callback onScrub).
@@ -473,7 +529,7 @@ export class ProfileChart {
     const s = this._scales();
     const [d0, d1] = this._range();
     const { px, py } = this._toCanvasPx(clientX, clientY);
-    if (py > s.p.t + 24 * this.dpr) return null; // seulement la bande des 📷 en haut
+    if (py > s.p.t + 30 * this.dpr) return null; // seulement la bande des vignettes en haut
     let best = null, bd = 16 * this.dpr;
     for (const md of this.media) {
       if (md.d == null || md.d < d0 || md.d > d1) continue;

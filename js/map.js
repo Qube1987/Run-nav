@@ -130,14 +130,32 @@ export class RaceMap {
 
   clearWaypoints() { this.wptLayer.clearLayers(); }
 
-  /** Marqueurs 📷 des médias géolocalisés (cliquables → visionneuse). */
+  /** Position du follower lui-même (marqueur « moi » distinct). */
+  setFollowerPosition(lat, lon) {
+    const ll = [lat, lon];
+    if (!this.meMarker) {
+      this.meMarker = L.marker(ll, {
+        icon: L.divIcon({ className: 'me-icon', html: '<div class="me-pin">🙂</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+        zIndexOffset: 800,
+      }).addTo(this.map);
+    } else {
+      this.meMarker.setLatLng(ll);
+    }
+  }
+  clearFollowerPosition() { if (this.meMarker) { this.meMarker.remove(); this.meMarker = null; } }
+
+  /** Marqueurs médias géolocalisés : vraie vignette de la photo (cliquable). */
   setMediaMarkers(list, onClick) {
     this.mediaLayer.clearLayers();
     for (const md of (list || [])) {
       if (md.lat == null || md.lon == null) continue;
+      const inner = md.kind === 'video'
+        ? `<div class="mm-thumb mm-video"><span>▶</span></div>`
+        : `<div class="mm-thumb"><img src="${md.url}" alt="" loading="lazy"></div>`;
+      const html = `<div class="media-thumb-marker">${inner}<span class="mm-tail"></span></div>`;
       const mk = L.marker([md.lat, md.lon], {
-        icon: L.divIcon({ className: 'media-icon', html: '<div class="media-pin">📷</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
-        zIndexOffset: 500,
+        icon: L.divIcon({ className: 'media-icon', html, iconSize: [46, 54], iconAnchor: [23, 54] }),
+        zIndexOffset: 600,
       }).addTo(this.mediaLayer);
       mk.on('click', () => { if (onClick) onClick(md); });
     }

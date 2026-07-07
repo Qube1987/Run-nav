@@ -21,7 +21,7 @@ import {
 } from './auth.js';
 import {
   broadcastPosition, setLiveActive, fetchLive,
-  uploadMedia, fetchMedia, mediaUrl,
+  uploadMedia, fetchMedia, deleteMedia, mediaUrl,
   postCheer, fetchCheers,
 } from './live.js';
 
@@ -47,7 +47,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -134,13 +134,15 @@ function init() {
   $('live-feed').addEventListener('click', openMediaFeed);
   $('media-strip').addEventListener('click', (e) => {
     const t = e.target.closest('.ms-thumb');
-    if (t) openMediaViewer(t.dataset.kind, t.dataset.url, t.dataset.cap);
+    if (t) openMediaFromRow(findMedia(t.dataset.id));
   });
+  $('mv-del').addEventListener('click', deleteViewedMedia);
   document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
   document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
   document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
   $('media-list').addEventListener('click', onMediaListClick);
 
+  $('follow-geo').addEventListener('click', toggleFollowerGeo);
   // Follower : encouragements
   $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
   $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
@@ -490,8 +492,8 @@ function startApp(track) {
   updateStatbar(0);
   setProfileView('full');
   applyModeUI();
-  // athlète déjà partagé : écoute les encouragements + affiche ses photos
-  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) startInboxPolling();
+  // athlète déjà partagé : écoute les encouragements + affiche ses photos + bandeau
+  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) { startInboxPolling(); updateLiveBanner(); }
   if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
@@ -585,7 +587,7 @@ function stopTracking() {
   const btn = $('act-start');
   btn.classList.remove('tracking');
   btn.querySelector('.act-ico').textContent = '▶';
-  btn.querySelector('span:last-child').textContent = 'Démarrer suivi GPS';
+  btn.querySelector('span:last-child').textContent = 'Démarrer';
   toast('Suivi arrêté.');
   stopLiveBroadcast();
 }
@@ -1615,6 +1617,7 @@ async function ensureCloudCode() {
   localSet('code:' + state.gpxKey, code);
   const el = $('cloud-code'); if (el) el.textContent = code;
   startInboxPolling(); // dès que la course est partagée, on écoute les encouragements
+  updateLiveBanner();  // fait apparaître le bandeau (partage · photos · messages)
   return code;
 }
 
@@ -1649,12 +1652,19 @@ function maybeBroadcast(lat, lon, d, ele) {
 function updateLiveBanner() {
   if (state.mode === 'follower') return;
   const b = $('live-banner');
-  if (!state.liveOn) { b.hidden = true; return; }
-  b.hidden = false; b.classList.remove('offline');
-  $('live-text').textContent = `🔴 En live · code ${state.cloudCode}`;
+  if (!state.cloudCode) { b.hidden = true; return; }
+  b.hidden = false;
+  $('follow-geo').hidden = true; // (follower uniquement)
   $('live-share').hidden = false;
   $('live-inbox').hidden = false;
   $('live-feed').hidden = false;
+  if (state.liveOn) {
+    b.classList.remove('offline');
+    $('live-text').textContent = `🔴 En live · code ${state.cloudCode}`;
+  } else {
+    b.classList.add('offline');
+    $('live-text').textContent = `Partagé · code ${state.cloudCode}`;
+  }
 }
 async function shareLive() {
   const code = state.mode === 'follower' ? state.followCode : state.cloudCode;
@@ -1786,16 +1796,51 @@ function enterFollowerMode() {
   state.newFeed = 0;
   ensureNotifyPermission();
   $('live-banner').hidden = false;
+  $('follow-geo').hidden = false;
   updateFollowerBanner(null);
   startFollowerPolling();
   toast(`👀 Tu suis « ${state.track.name} » en live.`);
+}
+
+// --- Géolocalisation du follower : voir si l'athlète s'approche ---
+function haversine(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toR, dLon = (b.lon - a.lon) * toR;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function toggleFollowerGeo() {
+  if (state.followerWatchId != null) {
+    navigator.geolocation.clearWatch(state.followerWatchId);
+    state.followerWatchId = null; state.followerPos = null; state._lastDist = null;
+    if (state.map) state.map.clearFollowerPosition();
+    $('follow-geo').classList.remove('active');
+    updateFollowerBanner(state.athleteFix);
+    toast('Ta position n’est plus affichée.');
+    return;
+  }
+  if (!('geolocation' in navigator)) { toast('Géolocalisation non disponible.'); return; }
+  state.followerWatchId = navigator.geolocation.watchPosition((pos) => {
+    state.followerPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    if (state.map) state.map.setFollowerPosition(state.followerPos.lat, state.followerPos.lon);
+    $('follow-geo').classList.add('active');
+    updateFollowerBanner(state.athleteFix);
+  }, () => { toast('Position refusée ou indisponible.'); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  toast('📍 Activation de ta position…');
 }
 function startFollowerPolling() {
   stopFollowerPolling();
   pollFollower();
   state._liveT = setInterval(pollFollower, 5000);
 }
-function stopFollowerPolling() { if (state._liveT) { clearInterval(state._liveT); state._liveT = null; } }
+function stopFollowerPolling() {
+  if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
+  if (state.followerWatchId != null) {
+    try { navigator.geolocation.clearWatch(state.followerWatchId); } catch (_) { /* ignore */ }
+    state.followerWatchId = null; state.followerPos = null; state._lastDist = null;
+    if (state.map) state.map.clearFollowerPosition();
+  }
+}
 async function pollFollower() {
   const code = state.followCode; if (!code) return;
   try {
@@ -1812,15 +1857,28 @@ function updateFollowerBanner(live) {
   $('live-feed').hidden = false;
   $('live-inbox').hidden = true;
   $('live-share').hidden = false;
+  $('follow-geo').hidden = false;
   const name = (live && live.athlete_name) || state.track.name || 'Athlète';
   const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
+  // distance athlète ↔ moi (si le follower a activé sa position)
+  let meTxt = '';
+  if (state.followerPos && live && live.lat != null) {
+    const dist = haversine(state.followerPos, { lat: live.lat, lon: live.lon });
+    let trend = '';
+    if (state._lastDist != null) {
+      if (dist < state._lastDist - 15) trend = ' ↓'; // se rapproche
+      else if (dist > state._lastDist + 15) trend = ' ↑'; // s'éloigne
+    }
+    state._lastDist = dist;
+    meTxt = ` · 👣 ${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'} de toi${trend}`;
+  }
   if (live && live.active && fresh) {
     b.classList.remove('offline');
     const km = live.d != null ? ` · ${(live.d / 1000).toFixed(1)} km` : '';
-    $('live-text').textContent = `🔴 ${name} en live${km}`;
+    $('live-text').textContent = `🔴 ${name}${km}${meTxt}`;
   } else {
     b.classList.add('offline');
-    $('live-text').textContent = live ? `${name} · hors ligne` : `${name} · pas encore parti`;
+    $('live-text').textContent = (live ? `${name} · hors ligne` : `${name} · pas encore parti`) + meTxt;
   }
 }
 function renderAthletePosition(live) {
@@ -1856,14 +1914,38 @@ function handleFollowerMedia(media) {
   updateFeedBadge();
 }
 
-/** Place les 📷 sur la carte + le profil et met à jour le bandeau photos. */
+/** Place les vignettes sur la carte + le profil et met à jour le bandeau photos. */
 function refreshMediaMarkers(list) {
-  if (state.map) state.map.setMediaMarkers(list, (md) => openMediaFromRow(md));
-  if (state.profile) state.profile.setMedia(list);
-  renderMediaStrip(list);
+  const withUrl = (list || []).map((m) => ({ ...m, url: mediaUrl(m.path) }));
+  if (state.map) state.map.setMediaMarkers(withUrl, (md) => openMediaFromRow(md));
+  if (state.profile) state.profile.setMedia(withUrl);
+  renderMediaStrip(withUrl);
 }
+function findMedia(id) { return (state._media || []).find((m) => m.id === id) || null; }
 function openMediaFromRow(md) {
-  openMediaViewer(md.kind, mediaUrl(md.path), md.caption || '');
+  if (!md) return;
+  state._viewMedia = md;
+  const url = md.url || mediaUrl(md.path);
+  $('mv-body').innerHTML = md.kind === 'video'
+    ? `<video src="${url}" controls autoplay playsinline></video>`
+    : `<img src="${url}" alt="">`;
+  $('mv-cap').textContent = md.caption || '';
+  $('mv-del').hidden = (state.mode !== 'athlete'); // seul l'athlète (propriétaire) supprime
+  $('media-view').hidden = false;
+}
+async function deleteViewedMedia() {
+  const md = state._viewMedia; if (!md) return;
+  if (!confirm('Supprimer définitivement ce média ?')) return;
+  try {
+    await deleteMedia(md.id, md.path);
+    const media = (state._media || []).filter((m) => m.id !== md.id);
+    state._media = media;
+    refreshMediaMarkers(media);
+    if (!$('media-sheet').hidden) renderMediaList(media);
+    updateFeedBadge();
+    $('media-view').hidden = true; $('mv-body').innerHTML = '';
+    toast('Média supprimé.');
+  } catch (e) { toast('Suppression impossible (réseau ?).'); }
 }
 
 /** Bandeau horizontal de vignettes (mise en évidence des photos sur le suivi). */
@@ -1874,11 +1956,11 @@ function renderMediaStrip(list) {
   if (state.mode !== 'follower' || !photos.length) { strip.hidden = true; strip.innerHTML = ''; return; }
   strip.hidden = false;
   strip.innerHTML = `<div class="ms-label">📷 ${photos.length}</div>` + photos.map((m) => {
-    const url = mediaUrl(m.path);
+    const url = m.url || mediaUrl(m.path);
     const inner = m.kind === 'video'
       ? `<video src="${url}#t=0.1" preload="metadata" muted playsinline></video><span class="ms-play">▶</span>`
       : `<img src="${url}" loading="lazy" alt="">`;
-    return `<div class="ms-thumb" data-kind="${m.kind}" data-url="${escAttr(url)}" data-cap="${escAttr(m.caption || '')}">${inner}</div>`;
+    return `<div class="ms-thumb" data-id="${escAttr(m.id)}">${inner}</div>`;
   }).join('');
 }
 async function sendCheer({ is_like, text }) {
@@ -1909,26 +1991,23 @@ async function openMediaFeed() {
   updateFeedBadge();
 }
 function renderMediaList(list) {
+  const owner = state.mode === 'athlete';
   $('media-empty').hidden = list.length > 0;
   $('media-list').innerHTML = list.map((m) => {
-    const url = mediaUrl(m.path);
+    const url = m.url || mediaUrl(m.path);
     const thumb = m.kind === 'video'
       ? `<video src="${url}#t=0.1" preload="metadata" muted playsinline></video><span class="mi-play">▶</span>`
       : `<img src="${url}" loading="lazy" alt="">`;
     const cap = m.caption ? `<span class="mi-cap">${escapeHtml(m.caption)}</span>` : '';
-    return `<div class="media-item" data-kind="${m.kind}" data-url="${escAttr(url)}" data-cap="${escAttr(m.caption || '')}">${thumb}${cap}</div>`;
+    const del = owner ? `<button class="mi-del" data-del="${escAttr(m.id)}" type="button" title="Supprimer">🗑️</button>` : '';
+    return `<div class="media-item" data-id="${escAttr(m.id)}">${thumb}${cap}${del}</div>`;
   }).join('');
 }
 function onMediaListClick(e) {
+  const del = e.target.closest('[data-del]');
+  if (del) { e.stopPropagation(); state._viewMedia = findMedia(del.dataset.del); deleteViewedMedia(); return; }
   const it = e.target.closest('.media-item'); if (!it) return;
-  openMediaViewer(it.dataset.kind, it.dataset.url, it.dataset.cap);
-}
-function openMediaViewer(kind, url, cap) {
-  $('mv-body').innerHTML = kind === 'video'
-    ? `<video src="${url}" controls autoplay playsinline></video>`
-    : `<img src="${url}" alt="">`;
-  $('mv-cap').textContent = cap || '';
-  $('media-view').hidden = false;
+  openMediaFromRow(findMedia(it.dataset.id));
 }
 
 init();

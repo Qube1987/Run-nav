@@ -288,21 +288,22 @@ body { overflow: hidden; }
 
 /* --- barre d'actions --- */
 .actionbar {
-  display: flex; gap: 8px; padding: 8px 10px calc(8px + var(--safe-bottom));
+  display: flex; gap: 6px; padding: 8px 8px calc(8px + var(--safe-bottom));
   background: var(--panel); border-top: 1px solid var(--line);
 }
 .act {
   flex: 0 0 auto;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 12px; padding: 9px 12px; font-size: 11px; cursor: pointer;
-  min-width: 60px;
+  border-radius: 12px; padding: 9px 7px; font-size: 10px; cursor: pointer;
+  min-width: 0; white-space: nowrap;
 }
 .act .act-ico { font-size: 18px; }
 .act.primary {
-  flex: 1; flex-direction: row; gap: 8px; font-size: 15px; font-weight: 700;
+  flex: 1 1 auto; min-width: 0; flex-direction: row; gap: 6px; font-size: 14px; font-weight: 700;
   background: linear-gradient(135deg, var(--green), #34a862); border-color: transparent; color: #fff;
 }
+.act.primary span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .act.primary.tracking { background: linear-gradient(135deg, #c9414a, #a8343c); }
 .act:active { transform: scale(0.97); }
 
@@ -692,12 +693,19 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: rgba(255,255,255,0.15); color: #fff; font-size: 20px; cursor: pointer;
 }
 
-/* --- marqueurs 📷 médias (carte) --- */
+/* --- marqueurs médias (carte) : vraie vignette avec petite pointe --- */
 .media-icon { text-align: center; }
-.media-pin {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: #4aa3ff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center; font-size: 15px;
+.media-thumb-marker { position: relative; width: 46px; height: 46px; }
+.mm-thumb {
+  width: 44px; height: 44px; border-radius: 11px; overflow: hidden;
+  border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55); background: #20303f;
+}
+.mm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mm-video { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; }
+.mm-tail {
+  position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
+  width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-top: 8px solid #fff; filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.4));
 }
 
 /* --- bandeau photos bien visible (suivi) --- */
@@ -726,3 +734,26 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   padding: 0 4px; border-radius: 9px; background: var(--accent); color: #fff;
   font-size: 11px; font-weight: 800; line-height: 17px; text-align: center;
 }
+
+/* --- marqueur « moi » (follower géolocalisé) --- */
+.me-icon { text-align: center; }
+.me-pin {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--green); border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.lb-btn.active { background: var(--green); color: #06210f; }
+
+/* --- suppression d'un média (feed + visionneuse) --- */
+.media-item .mi-del {
+  position: absolute; top: 4px; right: 4px; z-index: 1;
+  width: 26px; height: 26px; border-radius: 8px; border: none;
+  background: rgba(10, 13, 18, 0.7); color: #fff; font-size: 13px; cursor: pointer;
+}
+.media-item .mi-del:active { background: rgba(224, 72, 74, 0.8); }
+.mv-del {
+  margin-top: 14px; background: rgba(224, 72, 74, 0.15); color: #ff8a7a;
+  border: 1px solid rgba(224, 72, 74, 0.5); border-radius: 11px;
+  padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.mv-del:active { background: rgba(224, 72, 74, 0.3); }
