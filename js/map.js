@@ -98,14 +98,25 @@ export class RaceMap {
     });
   }
 
-  addWaypointMarker(wpt, barrierText) {
+  addWaypointMarker(wpt, barrierText, icons) {
     const isBar = !!barrierText;
-    const ico = wpt.icon || (wpt.summit ? '⛰️' : (isBar ? '⏱️' : '📍'));
+    const list = (icons && icons.length ? icons : (wpt.icon ? [wpt.icon] : [])).slice(0, 4);
     const color = wpt.color || (isBar ? '#e0484a' : '#ff5a3c');
     const badge = isBar ? '<span class="wpt-bar">⏱</span>' : '';
-    const html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
+    let html, size, anchor;
+    if (list.length <= 1) {
+      const ico = list[0] || (wpt.summit ? '⛰️' : (isBar ? '⏱️' : '📍'));
+      html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
+      size = [28, 28]; anchor = [14, 28];
+    } else {
+      // plusieurs dispos → chip arrondi listant toutes les icônes
+      const w = 10 + list.length * 18;
+      const inner = list.map((i) => `<span>${i}</span>`).join('');
+      html = `<div class="wpt-chip${isBar ? ' has-bar' : ''}" style="background:${color}">${inner}${badge}</div>`;
+      size = [w, 26]; anchor = [w / 2, 26];
+    }
     const m = L.marker([wpt.lat, wpt.lon], {
-      icon: L.divIcon({ className: 'wpt-icon', html, iconSize: [28, 28], iconAnchor: [14, 28] }),
+      icon: L.divIcon({ className: 'wpt-icon', html, iconSize: size, iconAnchor: anchor }),
     }).addTo(this.wptLayer);
     const tip = isBar
       ? `${wpt.label || 'Point'}<br>⏱ Barrière ${barrierText}`

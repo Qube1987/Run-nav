@@ -24,6 +24,13 @@ const $ = (id) => document.getElementById(id);
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
+
+/** Icônes sélectionnées d'un repère (tableau). Rétro-compat avec l'ancien champ `icon`. */
+function metaIcons(m) {
+  if (m && Array.isArray(m.icons)) return m.icons;
+  if (m && m.icon) return [m.icon];
+  return [];
+}
 const WPT_COLORS = ['#ff5a3c', '#f0a63a', '#ffd24a', '#3fbf6f', '#4aa3ff', '#b06fff', '#ffffff'];
 
 const state = {
@@ -55,7 +62,7 @@ const state = {
   // persistance
   gpxKey: null,
   cloudCode: null,
-  finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée', icon: '🏁', color: '' },
+  finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée', icons: [], color: '' },
   _saveT: null,
 };
 
@@ -334,7 +341,7 @@ function startApp(track) {
   // On conserve le type d'activité choisi (accueil / dernier défaut) ; une config
   // sauvegardée pour ce parcours peut le surcharger.
   state.gpxKey = hashTrack(track);
-  state.finishMeta = { info: '', cutoff: null, label: '🏁 Arrivée', icon: '🏁', color: '' };
+  state.finishMeta = { info: '', cutoff: null, label: '🏁 Arrivée', icons: [], color: '' };
   const saved = localLoad(state.gpxKey);
   if (saved) applyConfig(saved);
   setActivityType(state.activity);
@@ -414,12 +421,12 @@ function autoWaypoints(track) {
   const stepKm = track.total > 30000 ? 5 : track.total > 12000 ? 2 : 1;
   for (let km = stepKm; km * 1000 < track.total; km += stepKm) {
     const pt = pointAtDistance(track.points, km * 1000);
-    wpts.push({ d: km * 1000, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `${km} km`, auto: true, info: '', cutoff: null });
+    wpts.push({ d: km * 1000, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `${km} km`, auto: true, info: '', cutoff: null, icons: [] });
   }
   // sommets de côtes
   for (const c of state.climbs) {
     const pt = pointAtDistance(track.points, c.endD);
-    wpts.push({ d: c.endD, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `Sommet (${c.gain} m)`, auto: true, summit: true, info: '', cutoff: null });
+    wpts.push({ d: c.endD, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `Sommet (${c.gain} m)`, auto: true, summit: true, info: '', cutoff: null, icons: [] });
   }
   wpts.sort((a, b) => a.d - b.d);
   return wpts;
@@ -435,17 +442,18 @@ function renderWaypointMarkers() {
   if (state.map) {
     state.map.clearWaypoints();
     for (const w of state.waypoints) {
-      if (!w.auto || w.summit || w.icon || w.color || w.cutoff) {
-        state.map.addWaypointMarker(w, barrierText(w.cutoff));
+      if (!w.auto || w.summit || metaIcons(w).length || w.color || w.cutoff) {
+        state.map.addWaypointMarker(w, barrierText(w.cutoff), metaIcons(w));
       }
     }
-    // barrière horaire à l'arrivée
-    if (state.track && state.finishMeta.cutoff) {
+    // arrivée : barrière et/ou icônes de dispo
+    const fm = state.finishMeta;
+    if (state.track && (fm.cutoff || metaIcons(fm).length)) {
       const last = state.track.points[state.track.points.length - 1];
       const m = state.map.addWaypointMarker({
-        lat: last.lat, lon: last.lon, icon: state.finishMeta.icon || '🏁',
-        color: state.finishMeta.color, label: state.finishMeta.label || '🏁 Arrivée',
-      }, barrierText(state.finishMeta.cutoff));
+        lat: last.lat, lon: last.lon,
+        color: fm.color, label: fm.label || '🏁 Arrivée',
+      }, barrierText(fm.cutoff), metaIcons(fm).length ? metaIcons(fm) : ['🏁']);
       if (m) { m.off('click'); m.on('click', () => showWaypointInfo(state.finishMeta, state.track.total)); }
     }
   }
@@ -748,11 +756,10 @@ function addWaypointAtCursor() {
 function addWaypoint(d) {
   const pt = pointAtDistance(state.track.points, d);
   const label = `Passage ${(d / 1000).toFixed(1)} km`;
-  const w = { d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label, auto: false, info: '', cutoff: null };
+  const w = { d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label, auto: false, info: '', cutoff: null, icons: [] };
   state.waypoints.push(w);
   state.waypoints.sort((a, b) => a.d - b.d);
-  if (state.map) state.map.addWaypointMarker(w);
-  state.profile.setWaypoints(state.waypoints);
+  renderWaypointMarkers();
   recomputePacing();
   autosave();
   toast(`Point ajouté à ${(d / 1000).toFixed(1)} km.`);
@@ -785,10 +792,10 @@ function buildConfig() {
     paceMode: state.paceMode,
     manualKmh: state.manualKmh,
     targetSec: state.targetSec,
-    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null, label: state.finishMeta.label || '🏁 Arrivée', icon: state.finishMeta.icon || '🏁', color: state.finishMeta.color || '' },
+    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null, label: state.finishMeta.label || '🏁 Arrivée', icons: metaIcons(state.finishMeta), color: state.finishMeta.color || '' },
     waypoints: state.waypoints.map((w) => ({
       d: w.d, label: w.label, info: w.info || '', cutoff: w.cutoff || null,
-      icon: w.icon || '', color: w.color || '',
+      icons: metaIcons(w), color: w.color || '',
       auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
     })),
   };
@@ -801,13 +808,13 @@ function applyConfig(cfg) {
   if (typeof cfg.manualKmh === 'number') { state.manualKmh = cfg.manualKmh; state.speedCustomized = true; }
   if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
   if (cfg.startStr) { const ms = dtToMs(cfg.startStr); if (isFinite(ms)) state.startClock = ms; }
-  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null, label: cfg.finishMeta.label || '🏁 Arrivée', icon: cfg.finishMeta.icon || '🏁', color: cfg.finishMeta.color || '' };
+  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null, label: cfg.finishMeta.label || '🏁 Arrivée', icons: metaIcons(cfg.finishMeta), color: cfg.finishMeta.color || '' };
   if (Array.isArray(cfg.waypoints) && cfg.waypoints.length) {
     state.waypoints = cfg.waypoints.map((w) => {
       const pt = pointAtDistance(state.track.points, w.d);
       return {
         d: w.d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: w.label,
-        info: w.info || '', cutoff: w.cutoff || null, icon: w.icon || '', color: w.color || '',
+        info: w.info || '', cutoff: w.cutoff || null, icons: metaIcons(w), color: w.color || '',
         auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
       };
     });
@@ -1105,7 +1112,7 @@ function deleteWaypoint(wpi) {
 /** Un point « borne kilométrique » automatique, non personnalisé (masquable en lot). */
 function isPlainKmWaypoint(w) {
   return w.auto && !w.summit && !w.manual
-    && !w.icon && !w.color && !(w.info && w.info.trim()) && !w.cutoff
+    && !metaIcons(w).length && !w.color && !(w.info && w.info.trim()) && !w.cutoff
     && /^\d+(\.\d+)?\s*km$/.test((w.label || '').trim());
 }
 
@@ -1162,7 +1169,11 @@ function setWaypointInfo(wpi, val) {
 }
 function setWaypointIcon(wpi, icon) {
   const m = getWpMeta(wpi); if (!m) return;
-  m.icon = (m.icon === icon) ? '' : icon; // re-tap = désélectionne
+  const arr = metaIcons(m).slice();
+  const i = arr.indexOf(icon);
+  if (i >= 0) arr.splice(i, 1); else arr.push(icon); // coche / décoche
+  m.icons = arr;
+  if ('icon' in m) delete m.icon; // migre l'ancien champ mono-icône
   renderWaypointMarkers(); renderPaceTable(); autosave();
 }
 function setWaypointColor(wpi, color) {
@@ -1242,7 +1253,7 @@ function showWaypointInfo(meta, d) {
     ? `<div class="wi-notes"><span class="wi-k">Notes</span>${escapeHtml(notes)}</div>` : '';
 
   const sub = meta.summit ? '⛰️ Sommet' : (meta._pt ? 'point du parcours' : 'point de passage');
-  const titleIco = meta.icon ? meta.icon + ' ' : '';
+  const titleIco = metaIcons(meta).length ? metaIcons(meta).join(' ') + ' ' : '';
   $('wi-body').innerHTML = `
     <h3 class="wi-title"${meta.color ? ` style="color:${meta.color}"` : ''}>${titleIco}${escapeHtml(meta.label || 'Point')}</h3>
     <p class="wi-sub">${sub}</p>
@@ -1318,7 +1329,7 @@ function renderPaceTable() {
       : (toGoSec > 0 ? `⏱ dans ${fmtDuration(toGoSec)}` : '⏱ imminent');
 
     const name = r.meta.label || r.label;
-    const headIco = r.meta.icon || (r.summit ? '⛰️' : '');
+    const headIco = metaIcons(r.meta).join('') || (r.summit ? '⛰️' : '');
     const dotColor = r.meta.color || '';
     html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}"${dotColor ? ` style="border-left:4px solid ${dotColor}"` : ''}>
       <div class="pc-head">
@@ -1328,8 +1339,8 @@ function renderPaceTable() {
         ${r.wpi === 'finish' ? '' : `<button class="pr-del" data-wpi="${r.wpi}" type="button" title="Supprimer ce point" aria-label="Supprimer ce point">🗑️</button>`}
       </div>
       <div class="pc-deco">
-        <div class="pc-icons">${WPT_ICONS.map((ic) =>
-          `<button class="pr-icon${r.meta.icon === ic ? ' sel' : ''}" data-wpi="${r.wpi}" data-icon="${ic}" type="button">${ic}</button>`).join('')}</div>
+        <div class="pc-icons">${(() => { const sel = metaIcons(r.meta); return WPT_ICONS.map((ic) =>
+          `<button class="pr-icon${sel.includes(ic) ? ' sel' : ''}" data-wpi="${r.wpi}" data-icon="${ic}" type="button">${ic}</button>`).join(''); })()}</div>
         <div class="pc-colors">${WPT_COLORS.map((co) =>
           `<button class="pr-color${r.meta.color === co ? ' sel' : ''}" data-wpi="${r.wpi}" data-color="${co}" style="background:${co}" type="button" aria-label="couleur"></button>`).join('')}</div>
       </div>
