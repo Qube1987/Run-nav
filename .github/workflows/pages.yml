@@ -1,0 +1,42 @@
+name: Déploiement GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissions nécessaires pour publier sur Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configuration de Pages
+        # enablement: true active GitHub Pages automatiquement (source = Actions)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload du site (dossier racine, site statique)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Déploiement
+        id: deployment
+        uses: actions/deploy-pages@v4
