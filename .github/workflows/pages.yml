@@ -2,7 +2,7 @@ name: Déploiement GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/bike-race-tracker-gpx-gvqzux]
   workflow_dispatch:
 
 # Permissions nécessaires pour publier sur Pages
