@@ -425,14 +425,32 @@ function autoWaypoints(track) {
   return wpts;
 }
 
+/** Libellé d'une barrière horaire (heure + éventuel « +Nj »), ou null si absente. */
+function barrierText(cutoff) {
+  const ms = dtToMs(cutoff);
+  return isFinite(ms) ? fmtClockRel(ms) : null;
+}
+
 function renderWaypointMarkers() {
   if (state.map) {
     state.map.clearWaypoints();
     for (const w of state.waypoints) {
-      if (!w.auto || w.summit || w.icon || w.color) state.map.addWaypointMarker(w);
+      if (!w.auto || w.summit || w.icon || w.color || w.cutoff) {
+        state.map.addWaypointMarker(w, barrierText(w.cutoff));
+      }
+    }
+    // barrière horaire à l'arrivée
+    if (state.track && state.finishMeta.cutoff) {
+      const last = state.track.points[state.track.points.length - 1];
+      const m = state.map.addWaypointMarker({
+        lat: last.lat, lon: last.lon, icon: state.finishMeta.icon || '🏁',
+        color: state.finishMeta.color, label: state.finishMeta.label || '🏁 Arrivée',
+      }, barrierText(state.finishMeta.cutoff));
+      if (m) { m.off('click'); m.on('click', () => showWaypointInfo(state.finishMeta, state.track.total)); }
     }
   }
   state.profile.setWaypoints(state.waypoints);
+  state.profile.setFinishBarrier(!!state.finishMeta.cutoff);
 }
 
 // ------------------------------------------------------------------ SUIVI GPS
@@ -1043,7 +1061,8 @@ function setWaypointName(wpi, val) {
 function setWaypointCutoff(wpi, val) {
   const m = getWpMeta(wpi); if (!m) return;
   m.cutoff = val;
-  renderPaceTable(); // met à jour l'état danger (et masque/affiche la ligne barrière)
+  renderPaceTable();       // met à jour l'état danger (et masque/affiche la ligne barrière)
+  renderWaypointMarkers(); // fait apparaître/disparaître la barrière sur la carte & le profil
   autosave();
 }
 // Suppression de point : confirmation en 2 temps (anti-fausse-manip) + annulation 5 s.

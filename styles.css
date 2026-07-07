@@ -468,11 +468,20 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 }
 .wpt-icon { text-align: center; }
 .wpt-pin {
+  position: relative;
   width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
   border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
   display: flex; align-items: center; justify-content: center;
 }
 .wpt-pin > span { transform: rotate(45deg); font-size: 14px; line-height: 1; }
+/* barrière horaire : liseré rouge + petit badge ⏱ */
+.wpt-pin.has-bar { border-color: #ffd24a; box-shadow: 0 0 0 2px rgba(224, 72, 74, 0.55), 0 2px 5px rgba(0, 0, 0, 0.5); }
+.wpt-bar {
+  position: absolute; top: -7px; right: -7px; transform: rotate(45deg);
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #e0484a; color: #fff; border: 1.5px solid #fff;
+  font-size: 9px; line-height: 12px; text-align: center;
+}
 
 /* Leaflet ajustements thème sombre */
 .leaflet-container { background: #0b0e12; font-family: inherit; }

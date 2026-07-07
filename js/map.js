@@ -98,14 +98,19 @@ export class RaceMap {
     });
   }
 
-  addWaypointMarker(wpt) {
-    const ico = wpt.icon || (wpt.summit ? '⛰️' : '📍');
-    const color = wpt.color || '#ff5a3c';
-    const html = `<div class="wpt-pin" style="background:${color}"><span>${ico}</span></div>`;
+  addWaypointMarker(wpt, barrierText) {
+    const isBar = !!barrierText;
+    const ico = wpt.icon || (wpt.summit ? '⛰️' : (isBar ? '⏱️' : '📍'));
+    const color = wpt.color || (isBar ? '#e0484a' : '#ff5a3c');
+    const badge = isBar ? '<span class="wpt-bar">⏱</span>' : '';
+    const html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
     const m = L.marker([wpt.lat, wpt.lon], {
       icon: L.divIcon({ className: 'wpt-icon', html, iconSize: [28, 28], iconAnchor: [14, 28] }),
     }).addTo(this.wptLayer);
-    if (wpt.label) m.bindTooltip(wpt.label, { direction: 'top' });
+    const tip = isBar
+      ? `${wpt.label || 'Point'}<br>⏱ Barrière ${barrierText}`
+      : wpt.label;
+    if (tip) m.bindTooltip(tip, { direction: 'top' });
     m.on('click', () => { if (this.onWaypointClick) this.onWaypointClick(wpt); });
     return m;
   }
