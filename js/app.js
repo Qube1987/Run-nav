@@ -80,6 +80,9 @@ function init() {
   // panneau allure
   document.querySelectorAll('[data-close]').forEach((el) =>
     el.addEventListener('click', () => openSheet(false)));
+  // fiche point de passage
+  document.querySelectorAll('[data-wclose]').forEach((el) =>
+    el.addEventListener('click', () => { $('wpt-info').hidden = true; }));
   document.querySelectorAll('[data-pacemode]').forEach((b) =>
     b.addEventListener('click', () => setPaceMode(b.dataset.pacemode)));
   $('manual-speed').addEventListener('input', (e) => {
@@ -243,6 +246,8 @@ function startApp(track) {
     if (!state.map) {
       state.map = new RaceMap('map');
       state.map.onMapTap = (latlng) => onMapTap(latlng);
+      state.map.onWaypointClick = (wp) => showWaypointInfo(wp, wp.d);
+      state.map.onFinishClick = () => showWaypointInfo(state.finishMeta, state.track.total);
     }
     state.map.clearWaypoints();
     state.map.setTrack(track.points);
@@ -262,6 +267,7 @@ function startApp(track) {
       $('pf-full').classList.remove('active');
       $('pf-zoom').classList.remove('active');
     };
+    state.profile.onWaypointTap = (wp) => showWaypointInfo(wp, wp.d);
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
@@ -827,6 +833,60 @@ function setPaceMode(mode) {
   $('field-target').hidden = mode !== 'target';
   recomputePacing();
   autosave();
+}
+
+// ------------------------------------------------------------------ FICHE POINT
+/** Affiche la fiche d'un point de passage (depuis la carte ou le profil). */
+function showWaypointInfo(meta, d) {
+  if (!state.track || !state.cumTime) return;
+  const pts = state.track.points, cum = state.cumTime;
+  const here = pointAtDistance(pts, d);
+  const tSec = timeAtDistance(pts, cum, d);
+  const predMs = clockAt(d);
+
+  const onRouteNow = state.lastFix && state.lastFix.onRoute;
+  const curD = onRouteNow ? state.lastFix.d : 0;
+  const toPointM = Math.max(0, d - curD);
+  const toGoSec = Math.max(0, tSec - timeAtDistance(pts, cum, curD));
+  const toFinishM = Math.max(0, state.track.total - d);
+  const passed = onRouteNow && curD >= d - 20;
+
+  const rows = [];
+  rows.push(['Distance', `${(d / 1000).toFixed(1)} km · ${Math.round(here.ele)} m`]);
+  rows.push(['Temps de course', fmtDuration(tSec)]);
+  rows.push(['Arrivée estimée', fmtClockRel(predMs)]);
+  if (passed) {
+    rows.push(['Statut', '✓ déjà passé']);
+  } else {
+    rows.push([onRouteNow ? 'Restant jusqu’ici' : 'Depuis le départ',
+      `${(toPointM / 1000).toFixed(1)} km · ${onRouteNow ? 'dans ' + fmtDuration(toGoSec) : fmtDuration(tSec)}`]);
+  }
+  rows.push(['Jusqu’à l’arrivée', `${(toFinishM / 1000).toFixed(1)} km`]);
+
+  // barrière horaire
+  let cutoffRow = '';
+  const cutMs = dtToMs(meta.cutoff);
+  if (isFinite(cutMs)) {
+    const marginSec = (cutMs - predMs) / 1000;
+    const late = marginSec < 0;
+    cutoffRow = `<div class="wi-row ${late ? 'danger' : 'ok'}">
+      <span class="wi-k">Barrière · ${fmtClockRel(cutMs)}</span>
+      <span class="wi-v">${late ? '⚠ retard +' + fmtDuration(-marginSec) : '✓ marge ' + fmtDuration(marginSec)}</span>
+    </div>`;
+  }
+
+  const rowsHtml = rows.map(([k, v]) =>
+    `<div class="wi-row"><span class="wi-k">${k}</span><span class="wi-v">${v}</span></div>`).join('');
+  const notes = (meta.info || '').trim();
+  const notesHtml = notes
+    ? `<div class="wi-notes"><span class="wi-k">Notes</span>${escapeHtml(notes)}</div>` : '';
+
+  $('wi-body').innerHTML = `
+    <h3 class="wi-title">${escapeHtml(meta.label || 'Point de passage')}</h3>
+    <p class="wi-sub">${meta.summit ? '⛰️ Sommet · ' : ''}point de passage</p>
+    <div class="wi-rows">${rowsHtml}${cutoffRow}</div>
+    ${notesHtml}`;
+  $('wpt-info').hidden = false;
 }
 
 function recomputePacing() {

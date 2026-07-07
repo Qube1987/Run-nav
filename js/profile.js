@@ -316,7 +316,11 @@ export class ProfileChart {
         }
         return;
       }
-      if (!this._moved) this._readAt(e.clientX); // tap = lecture
+      if (!this._moved) {
+        const wp = this._waypointAt(e.clientX); // tap sur un point de passage ?
+        if (wp && this.onWaypointTap) this.onWaypointTap(wp);
+        else this._readAt(e.clientX);           // sinon lecture du profil
+      }
     };
 
     c.addEventListener('pointerdown', onDown);
@@ -397,6 +401,22 @@ export class ProfileChart {
     this._showTip(d, pt);
     clearTimeout(this._tipTimer);
     this._tipTimer = setTimeout(() => { if (this.tip) this.tip.hidden = true; if (this.onScrubEnd) this.onScrubEnd(); }, 2500);
+  }
+
+  /** Point de passage sous le doigt (par proximité horizontale) ou null. */
+  _waypointAt(clientX) {
+    if (!this.waypoints || !this.waypoints.length) return null;
+    const s = this._scales();
+    const [d0, d1] = this._range();
+    const tapX = (clientX - this.canvas.getBoundingClientRect().left) * this.dpr;
+    const tol = 12 * this.dpr;
+    let best = null, bestDx = Infinity;
+    for (const wp of this.waypoints) {
+      if (wp.d < d0 || wp.d > d1) continue;
+      const dx = Math.abs(s.x(wp.d) - tapX);
+      if (dx <= tol && dx < bestDx) { bestDx = dx; best = wp; }
+    }
+    return best;
   }
 
   _notifyView() { if (this.onViewChange) this.onViewChange(); }

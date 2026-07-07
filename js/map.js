@@ -57,7 +57,8 @@ export class RaceMap {
     L.circleMarker(latlngs[0], { radius: 6, color: '#fff', weight: 2, fillColor: '#3fbf6f', fillOpacity: 1 })
       .bindTooltip('Départ', { direction: 'top' }).addTo(this.map);
     L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, color: '#fff', weight: 2, fillColor: '#e8613c', fillOpacity: 1 })
-      .bindTooltip('Arrivée', { direction: 'top' }).addTo(this.map);
+      .bindTooltip('Arrivée', { direction: 'top' }).addTo(this.map)
+      .on('click', () => { if (this.onFinishClick) this.onFinishClick(); });
 
     this.map.fitBounds(this.trackLine.getBounds(), { padding: [30, 30] });
     this._latlngs = latlngs;
@@ -96,6 +97,7 @@ export class RaceMap {
       icon: L.divIcon({ className: 'wpt-icon', html: '📌', iconSize: [24, 24], iconAnchor: [6, 22] }),
     }).addTo(this.wptLayer);
     if (wpt.label) m.bindTooltip(wpt.label, { direction: 'top' });
+    m.on('click', () => { if (this.onWaypointClick) this.onWaypointClick(wpt); });
     return m;
   }
 
