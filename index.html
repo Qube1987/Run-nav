@@ -7,7 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Run-Nav — Suivi de course live</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%E2%9B%B0%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
   <!-- Leaflet (fond de carte) — vendorisé en local, aucune dépendance CDN -->
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
@@ -27,6 +28,14 @@
       <p class="tagline">Suivi live de tes trails &amp; épreuves vélo.<br>
         Charge ta trace GPX, vois où tu en es dans chaque côte.</p>
 
+      <div class="activity-pick">
+        <span class="activity-label">Type d'activité</span>
+        <div class="seg">
+          <button class="seg-btn active" data-activity="run" type="button">🏃 Course / trail</button>
+          <button class="seg-btn" data-activity="bike" type="button">🚴 Vélo</button>
+        </div>
+      </div>
+
       <label class="upload-btn" for="gpx-input">
         <span class="upload-icon">📂</span>
         Charger un fichier GPX
@@ -34,6 +43,9 @@
       <input id="gpx-input" type="file" accept=".gpx,application/gpx+xml,text/xml" hidden />
 
       <button id="demo-btn" class="ghost-btn" type="button">Essayer avec un parcours démo</button>
+
+      <button id="install-btn" class="ghost-btn" type="button" hidden>📲 Installer l'application</button>
+      <p id="ios-install" class="hint ios-install" hidden>Sur iPhone : bouton <b>Partager</b> ⎋ puis <b>« Sur l'écran d'accueil »</b>.</p>
 
       <p id="welcome-error" class="welcome-error" hidden></p>
 
