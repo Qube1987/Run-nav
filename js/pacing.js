@@ -31,7 +31,10 @@ export function buildTimeModel(points, refSpeedFlat) {
   for (let i = 1; i < n; i++) {
     const dd = points[i].d - points[i - 1].d;
     const g = points[i].grade || 0;
-    const v = Math.max(0.3, refSpeedFlat * speedFactor(g));
+    // v reste strictement positif (speedFactor >= 0.25). L'epsilon évite juste une
+    // division par zéro si refSpeedFlat est nul, sans casser la linéarité du modèle
+    // (indispensable pour que la calibration des temps de passage soit exacte).
+    const v = Math.max(1e-3, refSpeedFlat * speedFactor(g));
     cum[i] = cum[i - 1] + dd / v;
   }
   return cum;
@@ -56,6 +59,26 @@ export function calibrateForAvgSpeed(points, avgKmh) {
   const totalDist = points[points.length - 1].d;
   const targetSec = totalDist / (avgKmh / 3.6);
   return calibrateForTotalTime(points, targetSec);
+}
+
+/**
+ * Vitesse de référence à plat telle que le temps modélisé pour atteindre la
+ * distance `dist` vaille `targetSec`. Sert à éditer un temps de passage cible
+ * sur un point précis : tout le reste du parcours se recalibre en conséquence.
+ */
+export function calibrateForTimeAtDistance(points, dist, targetSec) {
+  const unit = buildTimeModel(points, 1);
+  const unitAt = timeAtDistance(points, unit, dist);
+  if (targetSec <= 0) return null;
+  return unitAt / targetSec;
+}
+
+/** Vitesse moyenne globale (km/h) correspondant à une vitesse de référence à plat. */
+export function avgSpeedFor(points, refSpeedFlat) {
+  const total = points[points.length - 1].d;
+  const unit = buildTimeModel(points, 1);
+  const totalSec = unit[unit.length - 1] / refSpeedFlat;
+  return (total / totalSec) * 3.6;
 }
 
 /** Temps cumulé (s) interpolé à une distance donnée. */

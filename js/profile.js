@@ -23,21 +23,30 @@ export class ProfileChart {
     this.climbs = [];
     this.waypoints = [];
     this.cursorD = null;      // distance de la position courante (m)
-    this.view = 'full';       // 'full' | 'climb'
-    this.viewRange = null;    // [startD, endD] en mode climb
+    this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
+    this.minSpan = 120;       // largeur minimale visible (m)
     this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     this.pad = { l: 44, r: 14, t: 16, b: 26 };
+    this.onViewChange = null; // notifie l'app quand la vue change (zoom/pan manuel)
+    this._pointers = new Map();
+    this._pinch = null;
     this._bind();
   }
 
   setTrack(track, climbs) {
     this.track = track;
     this.climbs = climbs || [];
+    this.win = [0, track.total];
     this.render();
   }
   setWaypoints(wpts) { this.waypoints = wpts; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
-  setView(view, range) { this.view = view; this.viewRange = range || null; this.render(); }
+  setView(view, range) {
+    if (view === 'climb' && range) this.win = [range[0], range[1]];
+    else if (this.track) this.win = [0, this.track.total];
+    this._clampWin();
+    this.render();
+  }
 
   resize() {
     const rect = this.canvas.getBoundingClientRect();
@@ -47,8 +56,34 @@ export class ProfileChart {
   }
 
   _range() {
-    if (this.view === 'climb' && this.viewRange) return this.viewRange;
+    if (this.win) return this.win;
     return [0, this.track ? this.track.total : 1];
+  }
+
+  _clampWin() {
+    if (!this.track || !this.win) return;
+    const total = this.track.total;
+    let [d0, d1] = this.win;
+    let span = Math.max(this.minSpan, Math.min(total, d1 - d0));
+    let mid = (d0 + d1) / 2;
+    d0 = mid - span / 2; d1 = mid + span / 2;
+    if (d0 < 0) { d1 -= d0; d0 = 0; }
+    if (d1 > total) { d0 -= (d1 - total); d1 = total; }
+    if (d0 < 0) d0 = 0;
+    this.win = [d0, d1];
+  }
+
+  /** Recentre la fenêtre sur une distance (utilisé par le suivi GPS). */
+  centerOn(d, keepSpan = true) {
+    if (!this.track || !this.win) return;
+    const span = keepSpan ? (this.win[1] - this.win[0]) : this.minSpan;
+    this.win = [d - span / 2, d + span / 2];
+    this._clampWin();
+    this.render();
+  }
+
+  isZoomed() {
+    return !!(this.track && this.win && (this.win[1] - this.win[0]) < this.track.total - 1);
   }
 
   _scales() {
@@ -208,39 +243,174 @@ export class ProfileChart {
   }
 
   // Interaction : survol/tap pour lire un point (renvoie via callback onScrub).
-  _bind() {
-    const handler = (clientX) => {
-      if (!this.track) return;
-      const rect = this.canvas.getBoundingClientRect();
-      const s = this._scales();
-      const relX = (clientX - rect.left) * this.dpr;
-      const [d0, d1] = this._range();
-      const span = d1 - d0;
-      const frac = (relX - s.p.l) / s.plotW;
-      const d = Math.max(d0, Math.min(d1, d0 + frac * span));
-      const pt = pointAtDistance(this.track.points, d);
-      if (this.onScrub) this.onScrub(d, pt);
-      this._showTip(d, pt, s);
-    };
-    const move = (e) => { e.preventDefault(); handler((e.touches ? e.touches[0] : e).clientX); };
-    const end = () => { if (this.tip) this.tip.hidden = true; if (this.onScrubEnd) this.onScrubEnd(); };
-    this.canvas.addEventListener('mousemove', move);
-    this.canvas.addEventListener('mouseleave', end);
-    this.canvas.addEventListener('touchstart', move, { passive: false });
-    this.canvas.addEventListener('touchmove', move, { passive: false });
-    this.canvas.addEventListener('touchend', end);
+  // Convertit une position écran (clientX) en distance (m) sur la fenêtre courante.
+  _clientXToData(clientX, clamp = false) {
+    const rect = this.canvas.getBoundingClientRect();
+    const p = this.pad.l * this.dpr;
+    const plotW = this.canvas.width - (this.pad.l + this.pad.r) * this.dpr;
+    const [d0, d1] = this._range();
+    let frac = ((clientX - rect.left) * this.dpr - p) / plotW;
+    if (clamp) frac = Math.max(0, Math.min(1, frac));
+    return d0 + frac * (d1 - d0);
   }
 
-  _showTip(d, pt, s) {
+  _plotGeom() {
+    return {
+      pL: this.pad.l * this.dpr,
+      plotW: this.canvas.width - (this.pad.l + this.pad.r) * this.dpr,
+    };
+  }
+
+  // Interaction multi-touch :
+  //  - 1 doigt qui glisse  => déplacement latéral (pan)
+  //  - 2 doigts (pinch)    => zoom + pan simultanés
+  //  - tap (sans glisser)  => lecture d'un point (distance / altitude / pente)
+  //  - molette (desktop)   => zoom autour du curseur
+  _bind() {
+    const c = this.canvas;
+    c.style.touchAction = 'none';
+
+    const onDown = (e) => {
+      if (!this.track) return;
+      try { c.setPointerCapture?.(e.pointerId); } catch (_) { /* pointeur synthétique */ }
+      this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this._downX = e.clientX; this._downY = e.clientY;
+      this._moved = false;
+      this._panLastX = e.clientX;
+      if (this._pointers.size === 2) this._startPinch();
+    };
+
+    const onMove = (e) => {
+      if (!this._pointers.has(e.pointerId)) return;
+      e.preventDefault();
+      const pt = this._pointers.get(e.pointerId);
+      pt.x = e.clientX; pt.y = e.clientY;
+
+      if (this._pointers.size >= 2 && this._pinch) {
+        this._applyPinch();
+        this._moved = true;
+        return;
+      }
+      // un seul doigt
+      const dx = e.clientX - this._downX, dy = e.clientY - this._downY;
+      if (!this._moved && Math.hypot(dx, dy) > 8) this._moved = true;
+      if (this._moved) {
+        this._panBy(e.clientX - this._panLastX);
+        this._panLastX = e.clientX;
+        this._notifyView();
+      }
+    };
+
+    const onUp = (e) => {
+      if (!this._pointers.has(e.pointerId)) return;
+      try { c.releasePointerCapture?.(e.pointerId); } catch (_) { /* pointeur synthétique */ }
+      const wasPinch = this._pointers.size >= 2;
+      this._pointers.delete(e.pointerId);
+
+      if (wasPinch) {
+        this._pinch = null;
+        // s'il reste un doigt, on repart proprement en pan
+        if (this._pointers.size === 1) {
+          const rem = [...this._pointers.values()][0];
+          this._panLastX = rem.x; this._downX = rem.x; this._downY = rem.y; this._moved = true;
+        }
+        return;
+      }
+      if (!this._moved) this._readAt(e.clientX); // tap = lecture
+    };
+
+    c.addEventListener('pointerdown', onDown);
+    c.addEventListener('pointermove', onMove);
+    c.addEventListener('pointerup', onUp);
+    c.addEventListener('pointercancel', onUp);
+
+    // Molette (desktop) : zoom autour du curseur
+    c.addEventListener('wheel', (e) => {
+      if (!this.track) return;
+      e.preventDefault();
+      const dCenter = this._clientXToData(e.clientX, true);
+      const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
+      this._zoomAround(dCenter, factor);
+      this._notifyView();
+    }, { passive: false });
+
+    // Double-clic / double-tap : réinitialise
+    c.addEventListener('dblclick', () => { this.setView('full'); this._notifyView(); });
+  }
+
+  _startPinch() {
+    const pts = [...this._pointers.values()];
+    const a = pts[0], b = pts[1];
+    const g = this._plotGeom();
+    const rect = this.canvas.getBoundingClientRect();
+    const relA = (a.x - rect.left) * this.dpr;
+    const relB = (b.x - rect.left) * this.dpr;
+    this._pinch = {
+      relA, relB,
+      dA: this._clientXToData(a.x),
+      dB: this._clientXToData(b.x),
+      pL: g.pL, plotW: g.plotW,
+    };
+  }
+
+  _applyPinch() {
+    const pts = [...this._pointers.values()];
+    if (pts.length < 2 || !this._pinch) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const relA = (pts[0].x - rect.left) * this.dpr;
+    const relB = (pts[1].x - rect.left) * this.dpr;
+    const { dA, dB, pL, plotW } = this._pinch;
+    if (Math.abs(dA - dB) < 1) return;
+    // sm = px par mètre ; on résout la fenêtre qui garde dA sous relA et dB sous relB
+    const sm = (relA - relB) / (dA - dB);
+    if (!isFinite(sm) || sm === 0) return;
+    const D0 = dA - (relA - pL) / sm;
+    const D1 = D0 + plotW / sm;
+    this.win = D1 > D0 ? [D0, D1] : [D1, D0];
+    this._clampWin();
+    this.render();
+  }
+
+  _panBy(dxClient) {
+    const g = this._plotGeom();
+    const [d0, d1] = this._range();
+    const sm = g.plotW / Math.max(1, d1 - d0); // px par mètre
+    const dd = -(dxClient * this.dpr) / sm;
+    this.win = [d0 + dd, d1 + dd];
+    this._clampWin();
+    this.render();
+  }
+
+  _zoomAround(dCenter, factor) {
+    const [d0, d1] = this._range();
+    const span = (d1 - d0) * factor;
+    const frac = (dCenter - d0) / Math.max(1, d1 - d0);
+    this.win = [dCenter - span * frac, dCenter + span * (1 - frac)];
+    this._clampWin();
+    this.render();
+  }
+
+  _readAt(clientX) {
+    const d = this._clientXToData(clientX, true);
+    const pt = pointAtDistance(this.track.points, d);
+    if (this.onScrub) this.onScrub(d, pt);
+    this._showTip(d, pt);
+    clearTimeout(this._tipTimer);
+    this._tipTimer = setTimeout(() => { if (this.tip) this.tip.hidden = true; if (this.onScrubEnd) this.onScrubEnd(); }, 2500);
+  }
+
+  _notifyView() { if (this.onViewChange) this.onViewChange(); }
+
+  _showTip(d, pt) {
     if (!this.tip) return;
+    const s = this._scales();
     const rect = this.canvas.getBoundingClientRect();
     const xCss = s.x(d) / this.dpr;
     this.tip.hidden = false;
     this.tip.innerHTML =
       `<b>${(d / 1000).toFixed(2)} km</b> · ${Math.round(pt.ele)} m · ${(pt.grade || 0).toFixed(1)}%`;
     const half = this.tip.offsetWidth / 2;
-    let left = xCss;
-    left = Math.max(half + 4, Math.min(rect.width - half - 4, left));
+    let left = Math.max(half + 4, Math.min(rect.width - half - 4, xCss));
     this.tip.style.left = `${left}px`;
   }
 }
