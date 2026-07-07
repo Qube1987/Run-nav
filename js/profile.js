@@ -224,13 +224,14 @@ export class ProfileChart {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText('⏱', xx, p.t + 1 * this.dpr);
       }
-      // pictogramme(s) au-dessus du point (alignés en rangée si plusieurs dispos)
+      // pictogramme(s) au-dessus du point (superposés/empilés si plusieurs dispos)
       if (icons.length) {
         ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        const iw = 14 * this.dpr;
-        const startX = xx - (icons.length - 1) * iw / 2;
-        icons.slice(0, 4).forEach((ic, k) => ctx.fillText(ic, startX + k * iw, yy - 6 * this.dpr));
+        const step = 6 * this.dpr;             // faible pas → icônes qui se chevauchent
+        const list = icons.slice(0, 4);
+        const startX = xx - (list.length - 1) * step / 2;
+        list.forEach((ic, k) => ctx.fillText(ic, startX + k * step, yy - 6 * this.dpr));
       }
     }
 

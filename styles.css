@@ -482,13 +482,17 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: #e0484a; color: #fff; border: 1.5px solid #fff;
   font-size: 9px; line-height: 12px; text-align: center;
 }
-/* repère à plusieurs dispos : chip arrondi listant les icônes */
+/* repère à plusieurs dispos : icônes superposées (empilées) sur un même repère */
 .wpt-chip {
-  position: relative; height: 26px; padding: 0 5px;
-  display: flex; align-items: center; justify-content: center; gap: 1px;
+  position: relative; height: 26px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
   border-radius: 13px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
-.wpt-chip > span { font-size: 14px; line-height: 1; }
+.wpt-chip > span {
+  font-size: 15px; line-height: 1; margin-left: -9px;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.55);
+}
+.wpt-chip > span:first-child { margin-left: 0; }
 .wpt-chip.has-bar { border-color: #ffd24a; box-shadow: 0 0 0 2px rgba(224, 72, 74, 0.55), 0 2px 5px rgba(0, 0, 0, 0.5); }
 .wpt-chip .wpt-bar { transform: none; top: -8px; }
 
