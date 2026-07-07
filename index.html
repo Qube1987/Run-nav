@@ -154,14 +154,24 @@
           <small class="hint">La vitesse est déduite de la distance totale.</small>
         </div>
 
-        <div class="field">
-          <label>Départ prévu</label>
-          <div class="seg">
-            <button class="seg-btn active" data-startmode="now" type="button">Maintenant</button>
-            <button class="seg-btn" data-startmode="clock" type="button">Heure précise</button>
+        <h3 class="sub">Horaires</h3>
+        <div class="field-row">
+          <div class="field">
+            <label>Heure de départ</label>
+            <input id="start-clock" type="time" />
           </div>
-          <input id="start-clock" type="time" hidden />
+          <div class="field">
+            <label>Heure actuelle</label>
+            <div class="input-with-btn">
+              <input id="now-clock" type="time" />
+              <button id="now-reset" type="button" title="Mettre à l'heure du téléphone">⟳</button>
+            </div>
+          </div>
         </div>
+        <button id="recale-now" class="wide-btn" type="button">
+          📍 Recaler les temps sur ma position
+        </button>
+        <p class="hint" id="recale-hint">Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage.</p>
 
         <h3 class="sub">Temps de passage</h3>
         <p class="hint" id="pace-summary">–</p>

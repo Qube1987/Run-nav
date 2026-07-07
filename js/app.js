@@ -32,8 +32,8 @@ const state = {
   paceMode: 'live',    // live | manual | target
   manualKmh: 12,
   targetSec: 4.5 * 3600,
-  startMode: 'now',    // now | clock
-  startClock: null,    // ms
+  startClock: null,    // ms — heure de départ (planifiée ou réelle)
+  nowClockStr: null,   // "HH:MM" saisi manuellement, sinon null = heure du téléphone
   startedAt: null,     // ms du démarrage réel du suivi
   refSpeedFlat: null,  // m/s à plat (modèle)
   cumTime: null,
@@ -65,8 +65,6 @@ function init() {
     el.addEventListener('click', () => openSheet(false)));
   document.querySelectorAll('[data-pacemode]').forEach((b) =>
     b.addEventListener('click', () => setPaceMode(b.dataset.pacemode)));
-  document.querySelectorAll('[data-startmode]').forEach((b) =>
-    b.addEventListener('click', () => setStartMode(b.dataset.startmode)));
   $('manual-speed').addEventListener('input', (e) => {
     state.manualKmh = parseFloat(e.target.value) || 12; recomputePacing();
   });
@@ -74,8 +72,16 @@ function init() {
     const s = parseHHMM(e.target.value); if (s) { state.targetSec = s; recomputePacing(); }
   });
   $('start-clock').addEventListener('input', (e) => {
-    state.startClock = clockToMs(e.target.value); recomputePacing();
+    if (e.target.value) { state.startClock = clockToMs(e.target.value); recomputePacing(); }
   });
+  $('now-clock').addEventListener('input', (e) => {
+    state.nowClockStr = e.target.value || null;
+  });
+  $('now-reset').addEventListener('click', () => {
+    state.nowClockStr = null;
+    $('now-clock').value = fmtClock(Date.now());
+  });
+  $('recale-now').addEventListener('click', recalibrateFromNow);
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
     const inp = e.target.closest('.pr-clock');
@@ -201,7 +207,8 @@ function toggleTracking() {
   if (!('geolocation' in navigator)) { toast('Géolocalisation non disponible.'); return; }
 
   state.startedAt = Date.now();
-  if (state.startMode === 'now') state.startClock = state.startedAt;
+  // si aucune heure de départ n'a été fixée, on part de maintenant
+  if (state.startClock == null) { state.startClock = state.startedAt; $('start-clock').value = fmtClock(state.startClock); }
   recomputePacing();
 
   state.watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
@@ -304,7 +311,7 @@ function updateStatbar(d, off) {
   $('st-speed').textContent = state.watchId != null ? `${kmh.toFixed(1)} km/h` : '–';
 
   // ETA arrivée
-  $('st-eta').textContent = etaText(d);
+  $('st-eta').textContent = etaText();
 
   // avertissement hors-trace
   const btn = $('act-start');
@@ -338,13 +345,52 @@ function gradeAt(d) {
   return pts[lo].grade || 0;
 }
 
-function etaText(d) {
+// ------------------------------------------------------------------ HORAIRES
+function baseStart() { return state.startClock != null ? state.startClock : Date.now(); }
+
+/** Heure d'horloge (ms) de passage à une distance donnée = départ + temps de course. */
+function clockAt(d) {
+  return baseStart() + timeAtDistance(state.track.points, state.cumTime, d) * 1000;
+}
+
+/** Heure "actuelle" de référence : saisie manuelle si présente, sinon horloge du téléphone. */
+function currentNowMs() {
+  if (state.nowClockStr) {
+    let ms = clockToMs(state.nowClockStr);
+    if (state.startClock != null && ms < state.startClock) ms += 86400000; // passage après minuit
+    return ms;
+  }
+  return Date.now();
+}
+
+/** "HH:MM" avec suffixe "+1j" si le passage a lieu un jour plus tard que le départ. */
+function fmtClockRel(clockMs) {
+  const s = fmtClock(clockMs);
+  const d0 = new Date(baseStart()); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(clockMs); d1.setHours(0, 0, 0, 0);
+  const days = Math.round((d1 - d0) / 86400000);
+  return days > 0 ? `${s} +${days}j` : s;
+}
+
+function etaText() {
   if (!state.cumTime) return '–';
-  const remainSec = state.cumTime[state.cumTime.length - 1] - timeAtDistance(state.track.points, state.cumTime, d);
-  if (!isFinite(remainSec)) return '–';
-  const base = state.startClock || Date.now();
-  const arrival = (state.startedAt ? Date.now() : base) + remainSec * 1000;
-  return fmtClock(arrival);
+  return fmtClockRel(clockAt(state.track.total));
+}
+
+/** Recale l'allure depuis la position GPS actuelle et l'heure actuelle. */
+function recalibrateFromNow() {
+  if (!state.track) return;
+  if (!state.lastFix || state.lastFix.d < 30) { toast('Position GPS requise — démarre le suivi.'); return; }
+  if (state.startClock == null) { toast("Renseigne d'abord l'heure de départ."); return; }
+  const elapsed = (currentNowMs() - state.startClock) / 1000;
+  if (elapsed < 60) { toast('Heure actuelle incohérente avec le départ.'); return; }
+  const ref = calibrateForTimeAtDistance(state.track.points, state.lastFix.d, elapsed);
+  if (!ref || !isFinite(ref) || ref <= 0) { toast('Recalage impossible.'); return; }
+  const avgKmh = avgSpeedFor(state.track.points, ref);
+  state.manualKmh = avgKmh;
+  $('manual-speed').value = avgKmh.toFixed(1);
+  setPaceMode('manual'); // applique et rafraîchit toute la table
+  toast(`Recalé : ${avgKmh.toFixed(1)} km/h de moyenne réelle · ${(state.lastFix.d / 1000).toFixed(1)} km parcourus.`);
 }
 
 // ------------------------------------------------------------------ BANDEAU CÔTE
@@ -442,15 +488,6 @@ function setPaceMode(mode) {
   recomputePacing();
 }
 
-function setStartMode(mode) {
-  state.startMode = mode;
-  document.querySelectorAll('[data-startmode]').forEach((b) =>
-    b.classList.toggle('active', b.dataset.startmode === mode));
-  $('start-clock').hidden = mode !== 'clock';
-  if (mode === 'now') state.startClock = Date.now();
-  recomputePacing();
-}
-
 function recomputePacing() {
   if (!state.track) return;
   const pts = state.track.points;
@@ -473,7 +510,7 @@ function recomputePacing() {
 
   renderPaceTable();
   if (state.lastFix) { updateStatbar(state.lastFix.d, state.lastFix.off); }
-  else { $('st-eta').textContent = etaText(0); }
+  else { $('st-eta').textContent = etaText(); }
 }
 
 function renderPaceTable() {
@@ -482,34 +519,26 @@ function renderPaceTable() {
   const cum = state.cumTime;
   if (!cum) { tbl.innerHTML = ''; return; }
 
-  const start = state.startClock || Date.now();
   const totalSec = cum[cum.length - 1];
   const avgKmh = (state.track.total / totalSec) * 3.6;
   $('pace-summary').textContent =
-    `Total estimé ${fmtDuration(totalSec)} · ${avgKmh.toFixed(1)} km/h moy. · départ ${fmtClock(start)}`;
+    `Durée estimée ${fmtDuration(totalSec)} · ${avgKmh.toFixed(1)} km/h moy. · départ ${fmtClock(baseStart())} → arrivée ${etaText()}`;
 
   // lignes : points de passage + arrivée
   const rows = state.waypoints.map((w) => ({ d: w.d, label: w.label, summit: w.summit }));
   rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false });
 
   const posD = state.lastFix ? state.lastFix.d : -1;
-  let html = `<div class="pace-row head"><span>Point</span><span>km</span><span>Cible ✎</span><span>Δ</span></div>`;
+  let html = `<div class="pace-row head"><span>Point</span><span>km</span><span>Temps</span><span>Heure ✎</span></div>`;
   for (const r of rows) {
     const tSec = timeAtDistance(pts, cum, r.d);
-    const clock = fmtClock(start + tSec * 1000);
+    const clock = fmtClock(clockAt(r.d));       // HH:MM pour l'input éditable
     const passed = posD >= r.d - 20;
-    let delta = '';
-    if (state.lastFix && !passed) {
-      const nowSec = timeAtDistance(pts, cum, posD);
-      delta = '+' + fmtDuration(tSec - nowSec);
-    } else if (passed) {
-      delta = '✓';
-    }
     html += `<div class="pace-row${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}">
       <span class="pr-label">${r.label}</span>
       <span>${(r.d / 1000).toFixed(1)}</span>
-      <input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Temps de passage cible">
-      <span class="pr-delta">${delta}</span>
+      <span class="pr-elapsed">${fmtDuration(tSec)}</span>
+      <input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Heure de passage cible">
     </div>`;
   }
   tbl.innerHTML = html;
@@ -538,7 +567,18 @@ function editWaypointTime(d, hhmm) {
 // ------------------------------------------------------------------ FEUILLE / SHEET
 function openSheet(open) {
   $('pace-sheet').hidden = !open;
-  if (open) renderPaceTable();
+  if (!open) return;
+  // pré-remplissage des heures
+  if (state.startClock == null) state.startClock = Date.now();
+  $('start-clock').value = fmtClock(state.startClock);
+  $('now-clock').value = state.nowClockStr || fmtClock(Date.now());
+  // le recalage nécessite une position GPS
+  const canRecale = !!state.lastFix;
+  $('recale-now').disabled = !canRecale;
+  $('recale-hint').textContent = canRecale
+    ? "Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage."
+    : 'Démarre le suivi GPS pour pouvoir recaler sur ta position.';
+  renderPaceTable();
 }
 
 // ------------------------------------------------------------------ UTILS UI
