@@ -47,7 +47,7 @@ const state = {
   // persistance
   gpxKey: null,
   cloudCode: null,
-  finishMeta: { info: '', cutoff: null },
+  finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée' },
   _saveT: null,
 };
 
@@ -110,8 +110,10 @@ function init() {
   $('cloud-save').addEventListener('click', cloudSaveNow);
   $('cloud-restore').addEventListener('click', cloudRestoreNow);
 
-  // édition infos / barrières dans la table (délégation)
+  // édition noms / infos / barrières dans la table (délégation)
   $('pace-table').addEventListener('change', (e) => {
+    const nm = e.target.closest('.pr-name');
+    if (nm) { setWaypointName(nm.dataset.wpi, nm.value); return; }
     const cut = e.target.closest('.pr-cutoff');
     if (cut) { setWaypointCutoff(cut.dataset.wpi, cut.value || null); return; }
   });
@@ -225,7 +227,7 @@ function startApp(track) {
   // On conserve le type d'activité choisi (accueil / dernier défaut) ; une config
   // sauvegardée pour ce parcours peut le surcharger.
   state.gpxKey = hashTrack(track);
-  state.finishMeta = { info: '', cutoff: null };
+  state.finishMeta = { info: '', cutoff: null, label: '🏁 Arrivée' };
   const saved = localLoad(state.gpxKey);
   if (saved) applyConfig(saved);
   setActivityType(state.activity);
@@ -646,7 +648,7 @@ function buildConfig() {
     paceMode: state.paceMode,
     manualKmh: state.manualKmh,
     targetSec: state.targetSec,
-    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null },
+    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null, label: state.finishMeta.label || '🏁 Arrivée' },
     waypoints: state.waypoints.map((w) => ({
       d: w.d, label: w.label, info: w.info || '', cutoff: w.cutoff || null,
       auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
@@ -661,7 +663,7 @@ function applyConfig(cfg) {
   if (typeof cfg.manualKmh === 'number') { state.manualKmh = cfg.manualKmh; state.speedCustomized = true; }
   if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
   if (cfg.startStr) { const ms = dtToMs(cfg.startStr); if (isFinite(ms)) state.startClock = ms; }
-  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null };
+  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null, label: cfg.finishMeta.label || '🏁 Arrivée' };
   if (Array.isArray(cfg.waypoints) && cfg.waypoints.length) {
     state.waypoints = cfg.waypoints.map((w) => {
       const pt = pointAtDistance(state.track.points, w.d);
@@ -798,6 +800,12 @@ function afterConfigRestored() {
 function getWpMeta(wpi) {
   return wpi === 'finish' ? state.finishMeta : state.waypoints[+wpi];
 }
+function setWaypointName(wpi, val) {
+  const m = getWpMeta(wpi); if (!m) return;
+  m.label = val.trim() || m.label;
+  renderWaypointMarkers(); // met à jour l'étiquette sur la carte
+  autosave();              // pas de re-render de la table (ne pas casser la saisie)
+}
 function setWaypointCutoff(wpi, val) {
   const m = getWpMeta(wpi); if (!m) return;
   m.cutoff = val;
@@ -887,9 +895,11 @@ function renderPaceTable() {
     const toGo = passed ? '✓ passé'
       : (toGoSec > 0 ? `⏱ dans ${fmtDuration(toGoSec)}` : '⏱ imminent');
 
+    const name = r.meta.label || r.label;
     html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}">
       <div class="pc-head">
-        <span class="pc-label">${r.summit ? '⛰️ ' : ''}${escapeHtml(r.label)}</span>
+        ${r.summit ? '<span class="pc-ico">⛰️</span>' : ''}
+        <input class="pr-name" type="text" value="${escapeHtml(name)}" data-wpi="${r.wpi}" aria-label="Nom du point" spellcheck="false">
         <span class="pc-km">${(r.d / 1000).toFixed(1)} km · ${fmtDuration(tSec)}</span>
       </div>
       <label class="pc-field">
