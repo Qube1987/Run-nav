@@ -190,7 +190,9 @@ body { overflow: hidden; }
   border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
 }
 .pf-tool.active { color: var(--accent-2); border-color: var(--accent-2); }
-.profile-canvas { flex: 1; width: 100%; touch-action: none; display: block; }
+/* min-height:0 = indispensable pour que le canvas puisse rétrécir dans le flex
+   (sinon sa hauteur intrinsèque le fait déborder sous la barre de boutons). */
+.profile-canvas { flex: 1 1 0; min-height: 0; width: 100%; touch-action: none; display: block; }
 .profile-tip {
   position: absolute; bottom: 34px; transform: translateX(-50%);
   background: rgba(10, 13, 18, 0.92); border: 1px solid var(--line);
@@ -370,4 +372,9 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 /* ============================= GRAND ÉCRAN ============================= */
 @media (min-width: 900px) {
   .stat-value { font-size: 17px; }
+  /* colonne centrée sur grand écran plutôt qu'un étirement pleine largeur */
+  .app { max-width: 1200px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  /* barre d'actions centrée, bouton principal à taille raisonnable */
+  .actionbar { justify-content: center; }
+  .act.primary { flex: 0 1 340px; }
 }
