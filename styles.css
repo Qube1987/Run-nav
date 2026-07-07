@@ -357,6 +357,32 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 }
 .leaflet-tooltip-top::before { border-top-color: var(--panel); }
 
+/* ============================= FICHE POINT ============================= */
+.wpt-info { position: fixed; inset: 0; z-index: 2500; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.wi-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px); }
+.wi-card {
+  position: relative; width: 100%; max-width: 380px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 18px 18px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  animation: wiPop 0.18s ease;
+}
+@keyframes wiPop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.wi-close {
+  position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--panel-2); border: none; color: var(--muted); font-size: 14px; cursor: pointer;
+}
+.wi-title { font-size: 18px; font-weight: 800; margin: 0 34px 2px 0; }
+.wi-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.wi-rows { display: flex; flex-direction: column; gap: 1px; border-radius: 10px; overflow: hidden; }
+.wi-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 11px; background: var(--panel-2); font-size: 14px; }
+.wi-row .wi-k { color: var(--muted); }
+.wi-row .wi-v { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.wi-row.danger { background: rgba(224, 72, 74, 0.16); }
+.wi-row.danger .wi-v { color: #ff9a9a; }
+.wi-row.ok .wi-v { color: var(--green); }
+.wi-notes { margin-top: 12px; background: var(--panel-2); border-radius: 10px; padding: 10px 11px; font-size: 14px; }
+.wi-notes .wi-k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 3px; }
+
 /* ============================= TOAST ============================= */
 .toast {
   position: fixed; left: 50%; bottom: calc(84px + var(--safe-bottom));
