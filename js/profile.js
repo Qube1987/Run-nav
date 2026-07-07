@@ -199,17 +199,25 @@ export class ProfileChart {
       ctx.fillText(`${stepKm < 1 ? km.toFixed(1) : Math.round(km)}`, xx, h - p.b + 4 * this.dpr);
     }
 
-    // --- points de passage ---
+    // --- points de passage (couleur + pictogramme si personnalisés) ---
     for (const wpt of this.waypoints) {
       if (wpt.d < d0 || wpt.d > d1) continue;
       const wp = pointAtDistance(pts, wpt.d);
       const xx = x(wpt.d), yy = y(wp.ele);
-      ctx.strokeStyle = 'rgba(120,190,255,0.5)';
+      const col = wpt.color || '#78beff';
+      ctx.strokeStyle = withAlpha(col, 0.5);
       ctx.setLineDash([3 * this.dpr, 3 * this.dpr]);
       ctx.beginPath(); ctx.moveTo(xx, p.t); ctx.lineTo(xx, h - p.b); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = '#78beff';
-      ctx.beginPath(); ctx.arc(xx, yy, 3.5 * this.dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = col;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1 * this.dpr;
+      ctx.beginPath(); ctx.arc(xx, yy, (wpt.icon ? 4.5 : 3.5) * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // pictogramme au-dessus du point (seulement si personnalisé, pour rester lisible)
+      if (wpt.icon) {
+        ctx.font = `${14 * this.dpr}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(wpt.icon, xx, yy - 6 * this.dpr);
+      }
     }
 
     // --- marqueur départ/arrivée ---
