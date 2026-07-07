@@ -146,6 +146,8 @@ function init() {
     if (ico) { setWaypointIcon(ico.dataset.wpi, ico.dataset.icon); return; }
     const col = e.target.closest('.pr-color');
     if (col) { setWaypointColor(col.dataset.wpi, col.dataset.color); return; }
+    const add = e.target.closest('.pr-addcut');
+    if (add) { revealCutoff(add); return; }
   });
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
@@ -1037,8 +1039,19 @@ function setWaypointName(wpi, val) {
 function setWaypointCutoff(wpi, val) {
   const m = getWpMeta(wpi); if (!m) return;
   m.cutoff = val;
-  renderPaceTable(); // met à jour l'état danger
+  renderPaceTable(); // met à jour l'état danger (et masque/affiche la ligne barrière)
   autosave();
+}
+/** Affiche la ligne « barrière horaire » (cachée par défaut) et ouvre le sélecteur. */
+function revealCutoff(btn) {
+  const card = btn.closest('.pace-card');
+  if (!card) return;
+  btn.hidden = true;
+  const field = card.querySelector('.pc-cutfield');
+  if (!field) return;
+  field.hidden = false;
+  const input = field.querySelector('.pr-cutoff');
+  if (input) { input.focus(); if (input.showPicker) { try { input.showPicker(); } catch (_) { /* ignore */ } } }
 }
 function setWaypointInfo(wpi, val) {
   const m = getWpMeta(wpi); if (!m) return;
@@ -1218,10 +1231,10 @@ function renderPaceTable() {
           `<button class="pr-color${r.meta.color === co ? ' sel' : ''}" data-wpi="${r.wpi}" data-color="${co}" style="background:${co}" type="button" aria-label="couleur"></button>`).join('')}</div>
       </div>
       <label class="pc-field">
-        <span class="pc-flabel">Arrivée estimée ✎ <em class="pc-togo">${toGo}</em></span>
+        <span class="pc-flabel">Arrivée estimée ✎ <em class="pc-togo">${toGo}</em>${cutoffVal ? '' : `<button class="pr-addcut" data-wpi="${r.wpi}" type="button">+ barrière horaire</button>`}</span>
         <input class="pr-clock" type="datetime-local" value="${msToDtLocal(predMs)}" data-d="${r.d}" aria-label="Heure d'arrivée estimée">
       </label>
-      <label class="pc-field">
+      <label class="pc-field pc-cutfield"${cutoffVal ? '' : ' hidden'}>
         <span class="pc-flabel">Barrière horaire (jour &amp; heure) ✎ ${badge}</span>
         <input class="pr-cutoff" type="datetime-local" value="${cutoffVal}" data-wpi="${r.wpi}" aria-label="Barrière horaire">
       </label>
