@@ -8,9 +8,13 @@ import { RaceMap } from './map.js';
 import { demoGpx } from './demo.js';
 import {
   buildTimeModel, calibrateForAvgSpeed, calibrateForTotalTime,
-  calibrateForTimeAtDistance, avgSpeedFor,
+  calibrateForTimeAtDistance, avgSpeedFor, setActivityType,
   timeAtDistance, fmtDuration, fmtClock,
 } from './pacing.js';
+import {
+  hashTrack, localSave, localLoad, localGet, localSet,
+  cloudSave, cloudLoad, makeCode,
+} from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,6 +34,7 @@ const state = {
   liveSpeed: 0,        // m/s
   // pacing
   paceMode: 'live',    // live | manual | target
+  activity: 'run',     // run | bike — modèle de pente
   manualKmh: 12,
   targetSec: 4.5 * 3600,
   startClock: null,    // ms — heure de départ (planifiée ou réelle)
@@ -37,6 +42,11 @@ const state = {
   startedAt: null,     // ms du démarrage réel du suivi
   refSpeedFlat: null,  // m/s à plat (modèle)
   cumTime: null,
+  // persistance
+  gpxKey: null,
+  cloudCode: null,
+  finishMeta: { info: '', cutoff: null },
+  _saveT: null,
 };
 
 // ------------------------------------------------------------------ INIT UI
@@ -66,13 +76,13 @@ function init() {
   document.querySelectorAll('[data-pacemode]').forEach((b) =>
     b.addEventListener('click', () => setPaceMode(b.dataset.pacemode)));
   $('manual-speed').addEventListener('input', (e) => {
-    state.manualKmh = parseFloat(e.target.value) || 12; recomputePacing();
+    state.manualKmh = parseFloat(e.target.value) || 12; recomputePacing(); autosave();
   });
   $('target-time').addEventListener('input', (e) => {
-    const s = parseHHMM(e.target.value); if (s) { state.targetSec = s; recomputePacing(); }
+    const s = parseHHMM(e.target.value); if (s) { state.targetSec = s; recomputePacing(); autosave(); }
   });
   $('start-clock').addEventListener('input', (e) => {
-    if (e.target.value) { state.startClock = clockToMs(e.target.value); recomputePacing(); }
+    if (e.target.value) { state.startClock = clockToMs(e.target.value); recomputePacing(); autosave(); }
   });
   $('now-clock').addEventListener('input', (e) => {
     state.nowClockStr = e.target.value || null;
@@ -82,6 +92,24 @@ function init() {
     $('now-clock').value = fmtClock(Date.now());
   });
   $('recale-now').addEventListener('click', recalibrateFromNow);
+
+  // type d'effort (modèle de pente)
+  document.querySelectorAll('[data-activity]').forEach((b) =>
+    b.addEventListener('click', () => setActivity(b.dataset.activity)));
+
+  // sauvegarde cloud
+  $('cloud-save').addEventListener('click', cloudSaveNow);
+  $('cloud-restore').addEventListener('click', cloudRestoreNow);
+
+  // édition infos / barrières dans la table (délégation)
+  $('pace-table').addEventListener('change', (e) => {
+    const cut = e.target.closest('.pr-cutoff');
+    if (cut) { setWaypointCutoff(cut.dataset.wpi, cut.value || null); return; }
+  });
+  $('pace-table').addEventListener('input', (e) => {
+    const info = e.target.closest('.pr-info');
+    if (info) { setWaypointInfo(info.dataset.wpi, info.value); }
+  });
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
     const inp = e.target.closest('.pr-clock');
@@ -129,6 +157,15 @@ function startApp(track) {
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
 
+  // persistance : clé du parcours + restauration des réglages sauvegardés
+  state.gpxKey = hashTrack(track);
+  state.finishMeta = { info: '', cutoff: null };
+  state.activity = 'run';
+  const saved = localLoad(state.gpxKey);
+  if (saved) applyConfig(saved);
+  setActivityType(state.activity);
+  state.cloudCode = localGet('code:' + state.gpxKey);
+
   $('welcome').hidden = true;
   $('app').hidden = false;
 
@@ -162,11 +199,22 @@ function startApp(track) {
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
 
+  // synchronise l'UI (type d'effort, mode, vitesse) avec la config restaurée
+  document.querySelectorAll('[data-activity]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.activity === state.activity));
+  document.querySelectorAll('[data-pacemode]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.pacemode === state.paceMode));
+  $('field-manual').hidden = state.paceMode !== 'manual';
+  $('field-target').hidden = state.paceMode !== 'target';
+  $('manual-speed').value = state.manualKmh.toFixed(1);
+  $('cloud-code').textContent = state.cloudCode || '—';
+
   renderWaypointMarkers();
   recomputePacing();
   updateStatbar(0);
   setProfileView('full');
-  toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+`);
+  const restored = saved ? ' · réglages restaurés' : '';
+  toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
   if (!state.hintShown) {
     state.hintShown = true;
     setTimeout(() => toast('💡 Pince pour zoomer le profil · glisse pour te déplacer · tape pour lire un point'), 3000);
@@ -180,12 +228,12 @@ function autoWaypoints(track) {
   const stepKm = track.total > 30000 ? 5 : track.total > 12000 ? 2 : 1;
   for (let km = stepKm; km * 1000 < track.total; km += stepKm) {
     const pt = pointAtDistance(track.points, km * 1000);
-    wpts.push({ d: km * 1000, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `${km} km`, auto: true });
+    wpts.push({ d: km * 1000, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `${km} km`, auto: true, info: '', cutoff: null });
   }
   // sommets de côtes
   for (const c of state.climbs) {
     const pt = pointAtDistance(track.points, c.endD);
-    wpts.push({ d: c.endD, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `Sommet (${c.gain} m)`, auto: true, summit: true });
+    wpts.push({ d: c.endD, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: `Sommet (${c.gain} m)`, auto: true, summit: true, info: '', cutoff: null });
   }
   wpts.sort((a, b) => a.d - b.d);
   return wpts;
@@ -469,13 +517,150 @@ function addWaypointAtCursor() {
 function addWaypoint(d) {
   const pt = pointAtDistance(state.track.points, d);
   const label = `Passage ${(d / 1000).toFixed(1)} km`;
-  const w = { d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label, auto: false };
+  const w = { d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label, auto: false, info: '', cutoff: null };
   state.waypoints.push(w);
   state.waypoints.sort((a, b) => a.d - b.d);
   if (state.map) state.map.addWaypointMarker(w);
   state.profile.setWaypoints(state.waypoints);
   recomputePacing();
+  autosave();
   toast(`Point ajouté à ${(d / 1000).toFixed(1)} km.`);
+}
+
+// ------------------------------------------------------------------ TYPE D'EFFORT
+function setActivity(act) {
+  state.activity = act === 'bike' ? 'bike' : 'run';
+  setActivityType(state.activity);
+  document.querySelectorAll('[data-activity]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.activity === state.activity));
+  recomputePacing();
+  autosave();
+}
+
+// ------------------------------------------------------------------ PERSISTANCE
+function buildConfig() {
+  return {
+    version: 1,
+    startStr: state.startClock != null ? fmtClock(state.startClock) : null,
+    activity: state.activity,
+    paceMode: state.paceMode,
+    manualKmh: state.manualKmh,
+    targetSec: state.targetSec,
+    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null },
+    waypoints: state.waypoints.map((w) => ({
+      d: w.d, label: w.label, info: w.info || '', cutoff: w.cutoff || null,
+      auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
+    })),
+  };
+}
+
+function applyConfig(cfg) {
+  if (!cfg) return;
+  if (cfg.activity) { state.activity = cfg.activity; setActivityType(state.activity); }
+  if (cfg.paceMode) state.paceMode = cfg.paceMode;
+  if (typeof cfg.manualKmh === 'number') state.manualKmh = cfg.manualKmh;
+  if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
+  if (cfg.startStr) state.startClock = clockToMs(cfg.startStr);
+  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null };
+  if (Array.isArray(cfg.waypoints) && cfg.waypoints.length) {
+    state.waypoints = cfg.waypoints.map((w) => {
+      const pt = pointAtDistance(state.track.points, w.d);
+      return {
+        d: w.d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: w.label,
+        info: w.info || '', cutoff: w.cutoff || null,
+        auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
+      };
+    });
+  }
+}
+
+/** Sauvegarde locale immédiate (débounce) + cloud si un code existe. */
+function autosave() {
+  clearTimeout(state._saveT);
+  state._saveT = setTimeout(() => {
+    if (!state.track || !state.gpxKey) return;
+    const cfg = buildConfig();
+    localSave(state.gpxKey, cfg);
+    if (state.cloudCode) {
+      cloudSave(state.cloudCode, state.gpxKey, state.track.name, cfg, new Date().toISOString())
+        .catch(() => { /* hors-ligne : le local suffit */ });
+    }
+  }, 700);
+}
+
+async function cloudSaveNow() {
+  if (!state.track) return;
+  if (!state.cloudCode) {
+    state.cloudCode = makeCode();
+    localSet('code:' + state.gpxKey, state.cloudCode);
+    $('cloud-code').textContent = state.cloudCode;
+  }
+  const btn = $('cloud-save');
+  btn.disabled = true; btn.textContent = '☁️ Sauvegarde…';
+  try {
+    await cloudSave(state.cloudCode, state.gpxKey, state.track.name, buildConfig(), new Date().toISOString());
+    toast(`Sauvegardé dans le cloud · code ${state.cloudCode}`);
+  } catch (e) {
+    toast('Échec de la sauvegarde cloud (réseau ?).');
+  } finally {
+    btn.disabled = false; btn.textContent = '☁️ Sauvegarder dans le cloud';
+  }
+}
+
+async function cloudRestoreNow() {
+  const code = ($('cloud-restore-code').value || '').trim().toUpperCase();
+  if (code.length < 4) { toast('Saisis un code valide.'); return; }
+  if (!state.track) { toast('Charge d’abord le GPX correspondant.'); return; }
+  const btn = $('cloud-restore');
+  btn.disabled = true;
+  try {
+    const row = await cloudLoad(code);
+    if (!row) { toast('Aucune sauvegarde pour ce code.'); return; }
+    if (row.gpx_key && row.gpx_key !== state.gpxKey) {
+      toast('Ce code correspond à un autre parcours.'); return;
+    }
+    applyConfig(row.data);
+    state.cloudCode = code;
+    localSet('code:' + state.gpxKey, code);
+    localSave(state.gpxKey, buildConfig());
+    afterConfigRestored();
+    toast('Réglages restaurés depuis le cloud.');
+  } catch (e) {
+    toast('Restauration impossible (réseau ?).');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** Rafraîchit toute l'UI après application d'une config restaurée. */
+function afterConfigRestored() {
+  setActivityType(state.activity);
+  document.querySelectorAll('[data-activity]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.activity === state.activity));
+  document.querySelectorAll('[data-pacemode]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.pacemode === state.paceMode));
+  $('field-manual').hidden = state.paceMode !== 'manual';
+  $('field-target').hidden = state.paceMode !== 'target';
+  $('manual-speed').value = state.manualKmh.toFixed(1);
+  if (state.startClock != null) $('start-clock').value = fmtClock(state.startClock);
+  renderWaypointMarkers();
+  recomputePacing();
+}
+
+// ------------------------------------------------------------------ INFOS / BARRIÈRES
+function getWpMeta(wpi) {
+  return wpi === 'finish' ? state.finishMeta : state.waypoints[+wpi];
+}
+function setWaypointCutoff(wpi, val) {
+  const m = getWpMeta(wpi); if (!m) return;
+  m.cutoff = val;
+  renderPaceTable(); // met à jour l'état danger
+  autosave();
+}
+function setWaypointInfo(wpi, val) {
+  const m = getWpMeta(wpi); if (!m) return;
+  m.info = val;
+  autosave(); // pas de re-render (ne pas casser la saisie)
 }
 
 // ------------------------------------------------------------------ ALLURE / TEMPS DE PASSAGE
@@ -486,6 +671,7 @@ function setPaceMode(mode) {
   $('field-manual').hidden = mode !== 'manual';
   $('field-target').hidden = mode !== 'target';
   recomputePacing();
+  autosave();
 }
 
 function recomputePacing() {
@@ -524,24 +710,52 @@ function renderPaceTable() {
   $('pace-summary').textContent =
     `Durée estimée ${fmtDuration(totalSec)} · ${avgKmh.toFixed(1)} km/h moy. · départ ${fmtClock(baseStart())} → arrivée ${etaText()}`;
 
-  // lignes : points de passage + arrivée
-  const rows = state.waypoints.map((w) => ({ d: w.d, label: w.label, summit: w.summit }));
-  rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false });
+  // lignes : chaque point de passage + l'arrivée. wpi = index (ou 'finish').
+  const rows = state.waypoints.map((w, i) => ({ d: w.d, label: w.label, summit: w.summit, meta: w, wpi: String(i) }));
+  rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false, meta: state.finishMeta, wpi: 'finish' });
 
   const posD = state.lastFix ? state.lastFix.d : -1;
-  let html = `<div class="pace-row head"><span>Point</span><span>km</span><span>Temps</span><span>Heure ✎</span></div>`;
+  let html = '';
   for (const r of rows) {
     const tSec = timeAtDistance(pts, cum, r.d);
-    const clock = fmtClock(clockAt(r.d));       // HH:MM pour l'input éditable
+    const predMs = clockAt(r.d);
+    const clock = fmtClock(predMs);
     const passed = posD >= r.d - 20;
-    html += `<div class="pace-row${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}">
-      <span class="pr-label">${r.label}</span>
-      <span>${(r.d / 1000).toFixed(1)}</span>
-      <span class="pr-elapsed">${fmtDuration(tSec)}</span>
-      <input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Heure de passage cible">
+    const info = r.meta.info || '';
+    const cutoff = r.meta.cutoff || '';
+
+    // état barrière horaire
+    let danger = false, badge = '';
+    if (cutoff) {
+      let cutMs = clockToMs(cutoff);
+      if (cutMs < baseStart()) cutMs += 86400000;
+      const marginSec = (cutMs - predMs) / 1000;
+      if (marginSec < 0) { danger = true; badge = `<span class="pc-warn">⚠ +${fmtDuration(-marginSec)}</span>`; }
+      else badge = `<span class="pc-ok">✓ ${fmtDuration(marginSec)}</span>`;
+    }
+
+    html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}">
+      <div class="pc-head">
+        <span class="pc-label">${r.summit ? '⛰️ ' : ''}${escapeHtml(r.label)}</span>
+        <span class="pc-km">${(r.d / 1000).toFixed(1)} km</span>
+      </div>
+      <div class="pc-row">
+        <span class="pc-cell"><i>Temps</i><b>${fmtDuration(tSec)}</b></span>
+        <label class="pc-cell"><i>Heure ✎</i><input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Heure de passage"></label>
+        <label class="pc-cell"><i>Barrière ✎</i><input class="pr-cutoff" type="time" value="${cutoff}" data-wpi="${r.wpi}" aria-label="Barrière horaire"></label>
+      </div>
+      <div class="pc-info-row">
+        <input class="pr-info" type="text" value="${escapeHtml(info)}" data-wpi="${r.wpi}" placeholder="ℹ️ ravito, note, matériel…">
+        ${badge}
+      </div>
     </div>`;
   }
   tbl.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 /**
@@ -578,6 +792,7 @@ function openSheet(open) {
   $('recale-hint').textContent = canRecale
     ? "Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage."
     : 'Démarre le suivi GPS pour pouvoir recaler sur ta position.';
+  $('cloud-code').textContent = state.cloudCode || '—';
   renderPaceTable();
 }
 
