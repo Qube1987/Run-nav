@@ -34,6 +34,7 @@ export class RaceMap {
     this.posMarker = null;
     this.accCircle = null;
     this.wptLayer = L.layerGroup().addTo(this.map);
+    this.mediaLayer = L.layerGroup().addTo(this.map);
     this.onMapTap = null;
     this.onUserPan = null;
 
@@ -128,6 +129,20 @@ export class RaceMap {
   }
 
   clearWaypoints() { this.wptLayer.clearLayers(); }
+
+  /** Marqueurs 📷 des médias géolocalisés (cliquables → visionneuse). */
+  setMediaMarkers(list, onClick) {
+    this.mediaLayer.clearLayers();
+    for (const md of (list || [])) {
+      if (md.lat == null || md.lon == null) continue;
+      const mk = L.marker([md.lat, md.lon], {
+        icon: L.divIcon({ className: 'media-icon', html: '<div class="media-pin">📷</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+        zIndexOffset: 500,
+      }).addTo(this.mediaLayer);
+      mk.on('click', () => { if (onClick) onClick(md); });
+    }
+  }
+  clearMediaMarkers() { this.mediaLayer.clearLayers(); }
 
   panTo(lat, lon) { this.map.panTo([lat, lon], { animate: true }); }
 

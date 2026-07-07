@@ -22,6 +22,8 @@ export class ProfileChart {
     this.track = null;
     this.climbs = [];
     this.waypoints = [];
+    this.media = [];            // médias géolocalisés (📷) cliquables
+    this.onMediaTap = null;
     this.finishBarrier = false; // barrière horaire à l'arrivée
     this.cursorD = null;      // distance de la position courante (m)
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
@@ -41,6 +43,7 @@ export class ProfileChart {
     this.render();
   }
   setWaypoints(wpts) { this.waypoints = wpts; this.render(); }
+  setMedia(list) { this.media = Array.isArray(list) ? list.filter((m) => m.d != null) : []; this.render(); }
   setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
@@ -249,6 +252,22 @@ export class ProfileChart {
       ctx.fillText('⏱', fx, p.t + 1 * this.dpr);
     }
 
+    // --- médias géolocalisés (📷 cliquable, en haut de la courbe) ---
+    for (const md of this.media) {
+      if (md.d < d0 || md.d > d1) continue;
+      const xx = x(md.d);
+      ctx.strokeStyle = withAlpha('#4aa3ff', 0.55); ctx.lineWidth = 1.2 * this.dpr;
+      ctx.setLineDash([2 * this.dpr, 3 * this.dpr]);
+      ctx.beginPath(); ctx.moveTo(xx, p.t + 18 * this.dpr); ctx.lineTo(xx, h - p.b); ctx.stroke();
+      ctx.setLineDash([]);
+      // pastille bleue + 📷
+      ctx.fillStyle = '#4aa3ff';
+      ctx.beginPath(); ctx.arc(xx, p.t + 9 * this.dpr, 10 * this.dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('📷', xx, p.t + 9 * this.dpr);
+    }
+
     // --- curseur position ---
     if (this.cursorD != null && this.cursorD >= d0 - 30 && this.cursorD <= d1 + 30) {
       const cp = pointAtDistance(pts, this.cursorD);
@@ -311,10 +330,11 @@ export class ProfileChart {
       this._moved = false;
       this._panLastX = e.clientX;
       if (this._pointers.size === 2) { this._startPinch(); this._grab = null; return; }
-      // intention à la pose du doigt : repère bleu, point jaune, ou pan
-      const wp = this._dotAt(e.clientX, e.clientY);
+      // intention à la pose du doigt : média 📷, repère bleu, point jaune, ou pan
+      const md = this._mediaAt(e.clientX, e.clientY);
+      const wp = md ? null : this._dotAt(e.clientX, e.clientY);
       const onCursor = this._cursorGrab(e.clientX);
-      this._grab = { wp, scrub: !!(wp || onCursor) }; // près d'un point/barre => scrub possible
+      this._grab = { md, wp, scrub: !md && !!(wp || onCursor) }; // près d'un point/barre => scrub possible
     };
 
     const onMove = (e) => {
@@ -356,8 +376,10 @@ export class ProfileChart {
         return;
       }
       if (!this._moved) {
-        // tap : sur un repère → sa fiche ; sinon → point précis de la courbe
-        if (this._grab && this._grab.wp) {
+        // tap : sur un média → photo ; sur un repère → sa fiche ; sinon → point de la courbe
+        if (this._grab && this._grab.md) {
+          if (this.onMediaTap) this.onMediaTap(this._grab.md);
+        } else if (this._grab && this._grab.wp) {
           this.setCursor(this._grab.wp.d);
           if (this.onWaypointTap) this.onWaypointTap(this._grab.wp);
         } else {
@@ -443,6 +465,22 @@ export class ProfileChart {
   _toCanvasPx(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
     return { px: (clientX - r.left) * this.dpr, py: (clientY - r.top) * this.dpr };
+  }
+
+  /** Média 📷 sous le doigt (bande du haut de la courbe), ou null. */
+  _mediaAt(clientX, clientY) {
+    if (!this.media || !this.media.length) return null;
+    const s = this._scales();
+    const [d0, d1] = this._range();
+    const { px, py } = this._toCanvasPx(clientX, clientY);
+    if (py > s.p.t + 24 * this.dpr) return null; // seulement la bande des 📷 en haut
+    let best = null, bd = 16 * this.dpr;
+    for (const md of this.media) {
+      if (md.d == null || md.d < d0 || md.d > d1) continue;
+      const dx = Math.abs(s.x(md.d) - px);
+      if (dx < bd) { bd = dx; best = md; }
+    }
+    return best;
   }
 
   /** Repère (point bleu) sous le doigt, capture serrée en x ET y, ou null. */

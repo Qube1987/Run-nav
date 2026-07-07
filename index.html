@@ -202,11 +202,18 @@
       <button id="act-photo" class="act" type="button" title="Photo / vidéo géolocalisée">
         <span class="act-ico">📸</span><span>Média</span>
       </button>
+      <button id="act-inbox" class="act" type="button" title="Messages d'encouragement">
+        <span class="act-ico">💬</span><span>Messages</span>
+        <span id="act-inbox-badge" class="act-badge" hidden></span>
+      </button>
       <button id="act-pace" class="act" type="button" title="Réglages allure">
         <span class="act-ico">⚙️</span><span>Allure</span>
       </button>
     </nav>
     <input id="media-input" type="file" accept="image/*,video/*" capture="environment" hidden />
+
+    <!-- Bandeau photos (mode suivi) : vignettes bien visibles -->
+    <div id="media-strip" class="media-strip" hidden></div>
 
     <!-- Barre d'encouragement (mode follower) -->
     <div id="cheer-bar" class="cheer-bar" hidden>

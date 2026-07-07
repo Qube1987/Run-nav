@@ -47,7 +47,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -128,9 +128,14 @@ function init() {
   // Athlète : média (photo/vidéo), partage, boîte de réception
   $('act-photo').addEventListener('click', () => $('media-input').click());
   $('media-input').addEventListener('change', onMediaPicked);
+  $('act-inbox').addEventListener('click', openInbox);
   $('live-share').addEventListener('click', shareLive);
   $('live-inbox').addEventListener('click', openInbox);
   $('live-feed').addEventListener('click', openMediaFeed);
+  $('media-strip').addEventListener('click', (e) => {
+    const t = e.target.closest('.ms-thumb');
+    if (t) openMediaViewer(t.dataset.kind, t.dataset.url, t.dataset.cap);
+  });
   document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
   document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
   document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
@@ -464,6 +469,7 @@ function startApp(track) {
     };
     state.profile.onWaypointTap = (wp) => { highlightAt(wp.d); showWaypointInfo(wp, wp.d); };
     state.profile.onPointSelect = (d) => { highlightAt(d); showPointInfo(d); };
+    state.profile.onMediaTap = (md) => openMediaFromRow(md);
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
@@ -484,6 +490,8 @@ function startApp(track) {
   updateStatbar(0);
   setProfileView('full');
   applyModeUI();
+  // athlète déjà partagé : écoute les encouragements + affiche ses photos
+  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) startInboxPolling();
   if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
@@ -518,6 +526,13 @@ function barrierText(cutoff) {
 }
 
 function renderWaypointMarkers() {
+  // Mode suivi (follower) : on n'affiche PAS les repères — juste position + photos.
+  if (state.mode === 'follower') {
+    if (state.map) state.map.clearWaypoints();
+    state.profile.setWaypoints([]);
+    state.profile.setFinishBarrier(false);
+    return;
+  }
   if (state.map) {
     state.map.clearWaypoints();
     for (const w of state.waypoints) {
@@ -1599,6 +1614,7 @@ async function ensureCloudCode() {
   state.cloudCode = code;
   localSet('code:' + state.gpxKey, code);
   const el = $('cloud-code'); if (el) el.textContent = code;
+  startInboxPolling(); // dès que la course est partagée, on écoute les encouragements
   return code;
 }
 
@@ -1668,6 +1684,7 @@ async function onMediaPicked(e) {
   try {
     await uploadMedia(code, file, { caption, lat, lon, d });
     toast('📸 Média publié ! Tes followers seront notifiés.');
+    try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
 }
 
@@ -1695,14 +1712,26 @@ async function pollInbox() {
   list.forEach((c) => state.seenCheers.add(c.id));
   state._inboxLoaded = true;
   updateInboxBadge();
+  // l'athlète voit aussi ses propres médias sur la carte / le profil
+  try {
+    const media = await fetchMedia(state.cloudCode);
+    state._media = media;
+    refreshMediaMarkers(media);
+    updateFeedBadge();
+  } catch (_) { /* ignore */ }
 }
 function updateInboxBadge() {
-  $('inbox-count').textContent = state._cheers ? state._cheers.length : 0;
+  const n = state._cheers ? state._cheers.length : 0;
+  $('inbox-count').textContent = n;
   $('live-inbox').classList.toggle('has-new', state.newInbox > 0);
+  const b = $('act-inbox-badge');
+  if (b) { b.textContent = state.newInbox; b.hidden = state.newInbox === 0; }
 }
 async function openInbox() {
+  if (!state.cloudCode) { toast('Partage ta course (Live ou ☁️) pour recevoir des messages.'); return; }
   state.newInbox = 0; updateInboxBadge();
-  const list = state._cheers || await fetchCheers(state.cloudCode);
+  let list = state._cheers;
+  if (!list) { try { list = await fetchCheers(state.cloudCode); } catch (_) { list = []; } }
   renderInbox(list);
   $('inbox-sheet').hidden = false;
 }
@@ -1823,7 +1852,34 @@ function handleFollowerMedia(media) {
   }
   media.forEach((m) => state.seenMedia.add(m.id));
   state._mediaLoaded = true;
+  refreshMediaMarkers(media);
   updateFeedBadge();
+}
+
+/** Place les 📷 sur la carte + le profil et met à jour le bandeau photos. */
+function refreshMediaMarkers(list) {
+  if (state.map) state.map.setMediaMarkers(list, (md) => openMediaFromRow(md));
+  if (state.profile) state.profile.setMedia(list);
+  renderMediaStrip(list);
+}
+function openMediaFromRow(md) {
+  openMediaViewer(md.kind, mediaUrl(md.path), md.caption || '');
+}
+
+/** Bandeau horizontal de vignettes (mise en évidence des photos sur le suivi). */
+function renderMediaStrip(list) {
+  const strip = $('media-strip');
+  if (!strip) return;
+  const photos = (list || []);
+  if (state.mode !== 'follower' || !photos.length) { strip.hidden = true; strip.innerHTML = ''; return; }
+  strip.hidden = false;
+  strip.innerHTML = `<div class="ms-label">📷 ${photos.length}</div>` + photos.map((m) => {
+    const url = mediaUrl(m.path);
+    const inner = m.kind === 'video'
+      ? `<video src="${url}#t=0.1" preload="metadata" muted playsinline></video><span class="ms-play">▶</span>`
+      : `<img src="${url}" loading="lazy" alt="">`;
+    return `<div class="ms-thumb" data-kind="${m.kind}" data-url="${escAttr(url)}" data-cap="${escAttr(m.caption || '')}">${inner}</div>`;
+  }).join('');
 }
 async function sendCheer({ is_like, text }) {
   if (state.mode !== 'follower' || !state.followCode) return;
