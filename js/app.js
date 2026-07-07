@@ -146,6 +146,13 @@ function init() {
     if (state.map) state.map.invalidate();
   });
 
+  // plein écran carte / profil (paysage)
+  $('pf-fs').addEventListener('click', () => toggleFs(document.querySelector('.profile-wrap'), $('pf-fs')));
+  $('map-fs').addEventListener('click', (e) => { e.stopPropagation(); toggleFs(document.querySelector('.map-wrap'), $('map-fs')); });
+  document.addEventListener('fullscreenchange', onNativeFsChange);
+  document.addEventListener('webkitfullscreenchange', onNativeFsChange);
+  window.addEventListener('orientationchange', () => { if (fsEl) { fsResize(); updateFsHint(); } });
+
   // type d'effort par défaut (dernier choisi), reflété sur l'accueil
   state.activity = localGet('activity') || 'run';
   setActivityType(state.activity);
@@ -154,6 +161,63 @@ function init() {
     b.classList.toggle('active', b.dataset.activity === state.activity));
 
   setupPWA();
+}
+
+// ------------------------------------------------------------------ PLEIN ÉCRAN
+let fsEl = null, fsBtn = null;
+
+function toggleFs(el, btn) {
+  if (!el) return;
+  if (fsEl === el) { exitFs(); return; }
+  if (fsEl) exitFs();
+  enterFs(el, btn);
+}
+
+async function enterFs(el, btn) {
+  fsEl = el; fsBtn = btn || null;
+  if (fsBtn) fsBtn.classList.add('active');
+  let native = false;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { try { await req.call(el); native = true; } catch (_) { /* iOS : pas de FS sur un div */ } }
+  if (!native) { el.classList.add('fs-active'); document.body.classList.add('fs-css'); }
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (_) { /* iOS / desktop */ }
+  fsResize();
+  updateFsHint();
+}
+
+function exitFs() {
+  if (!fsEl) return;
+  const el = fsEl; fsEl = null;
+  el.classList.remove('fs-active');
+  document.body.classList.remove('fs-css');
+  if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
+  $('fs-hint').hidden = true;
+  try { if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) { /* ignore */ }
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
+  fsResize();
+}
+
+function onNativeFsChange() {
+  // sortie du plein écran natif via un geste système
+  if (!document.fullscreenElement && !document.webkitFullscreenElement && fsEl && !fsEl.classList.contains('fs-active')) {
+    fsEl = null;
+    if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
+    $('fs-hint').hidden = true;
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
+    fsResize();
+  }
+}
+
+function fsResize() {
+  setTimeout(() => {
+    if (state.map) state.map.invalidate();
+    if (state.profile) state.profile.resize();
+  }, 160);
+}
+
+function updateFsHint() {
+  const portrait = window.matchMedia('(orientation: portrait)').matches;
+  $('fs-hint').hidden = !(fsEl && portrait);
 }
 
 // ------------------------------------------------------------------ PWA / HORS-LIGNE

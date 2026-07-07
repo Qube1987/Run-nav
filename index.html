@@ -117,7 +117,10 @@
     </div>
 
     <!-- Carte -->
-    <div id="map" class="map"></div>
+    <div class="map-wrap">
+      <div id="map" class="map"></div>
+      <button id="map-fs" class="fs-btn" type="button" title="Plein écran paysage">⛶</button>
+    </div>
 
     <!-- Profil altimétrique -->
     <div class="profile-wrap">
@@ -126,6 +129,7 @@
         <button class="pf-tab" id="pf-zoom" type="button">Côte en cours</button>
         <div class="pf-spacer"></div>
         <button class="pf-tool" id="pf-follow" type="button" title="Suivre ma position">📍 Suivi</button>
+        <button class="pf-tool" id="pf-fs" type="button" title="Plein écran paysage">⛶</button>
       </div>
       <canvas id="profile" class="profile-canvas"></canvas>
       <div id="profile-tip" class="profile-tip" hidden></div>
@@ -235,6 +239,9 @@
       <div id="wi-body"></div>
     </div>
   </div>
+
+  <!-- Plein écran : indice orientation (repli iOS) -->
+  <div id="fs-hint" class="fs-hint" hidden>🔄 Tourne ton téléphone · ⛶ pour quitter</div>
 
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
