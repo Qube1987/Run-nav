@@ -486,14 +486,13 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
    Chaque icône occupe une fente étroite fixe (10px) mais déborde visuellement →
    chevauchement garanti quelle que soit la largeur réelle du glyphe emoji. */
 .wpt-chip {
-  position: relative; height: 26px; padding: 0 3px;
-  display: flex; align-items: center; justify-content: center;
+  position: relative; height: 26px;
   border-radius: 13px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 .wpt-chip > span {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 10px; font-size: 14px; line-height: 1;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  font-size: 16px; line-height: 1;
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
 }
 .wpt-chip.has-bar { border-color: #ffd24a; box-shadow: 0 0 0 2px rgba(224, 72, 74, 0.55), 0 2px 5px rgba(0, 0, 0, 0.5); }
 .wpt-chip .wpt-bar { transform: none; top: -8px; right: -6px; }
