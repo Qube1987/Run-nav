@@ -176,6 +176,10 @@ function toggleFs(el, btn) {
 async function enterFs(el, btn) {
   fsEl = el; fsBtn = btn || null;
   if (fsBtn) fsBtn.classList.add('active');
+  // les overlays (fiche point, indice) doivent vivre DANS l'élément plein écran
+  // pour être rendus en plein écran natif et au-dessus en repli CSS.
+  el.appendChild($('wpt-info'));
+  el.appendChild($('fs-hint'));
   let native = false;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   if (req) { try { await req.call(el); native = true; } catch (_) { /* iOS : pas de FS sur un div */ } }
@@ -191,6 +195,10 @@ function exitFs() {
   el.classList.remove('fs-active');
   document.body.classList.remove('fs-css');
   if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
+  // remet les overlays au niveau du body et ferme la fiche
+  document.body.appendChild($('wpt-info'));
+  document.body.appendChild($('fs-hint'));
+  $('wpt-info').hidden = true;
   $('fs-hint').hidden = true;
   try { if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) { /* ignore */ }
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
@@ -202,6 +210,9 @@ function onNativeFsChange() {
   if (!document.fullscreenElement && !document.webkitFullscreenElement && fsEl && !fsEl.classList.contains('fs-active')) {
     fsEl = null;
     if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
+    document.body.appendChild($('wpt-info'));
+    document.body.appendChild($('fs-hint'));
+    $('wpt-info').hidden = true;
     $('fs-hint').hidden = true;
     try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
     fsResize();
