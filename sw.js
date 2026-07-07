@@ -3,7 +3,7 @@
    - Tuiles de carte : cache runtime plafonné (les zones déjà vues restent dispo).
    - Supabase & autres POST : réseau uniquement (jamais mis en cache). */
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `runnav-shell-${VERSION}`;
 const TILE_CACHE = `runnav-tiles-${VERSION}`;
 const TILE_MAX = 800;
@@ -72,14 +72,21 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // App shell (même origine) : cache-first, repli réseau ; navigation → index.html
+  // App shell (même origine) : RÉSEAU D'ABORD quand en ligne (toujours la dernière
+  // version), repli sur le cache hors-ligne. Évite de rester bloqué sur une
+  // version périmée tout en gardant l'app utilisable sans réseau.
   if (url.origin === self.location.origin) {
     e.respondWith((async () => {
-      const cached = await caches.match(req);
-      if (cached) return cached;
       try {
-        return await fetch(req);
+        const res = await fetch(req);
+        if (res && res.ok) {
+          const cache = await caches.open(SHELL_CACHE);
+          cache.put(req, res.clone());
+        }
+        return res;
       } catch (_) {
+        const cached = await caches.match(req);
+        if (cached) return cached;
         if (req.mode === 'navigate') return caches.match('./index.html');
         return Response.error();
       }
