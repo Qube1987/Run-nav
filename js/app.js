@@ -148,7 +148,10 @@ function init() {
     if (col) { setWaypointColor(col.dataset.wpi, col.dataset.color); return; }
     const add = e.target.closest('.pr-addcut');
     if (add) { revealCutoff(add); return; }
+    const del = e.target.closest('.pr-del');
+    if (del) { deleteWaypoint(del.dataset.wpi); return; }
   });
+  $('hide-km').addEventListener('click', hideKmWaypoints);
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
     const inp = e.target.closest('.pr-clock');
@@ -1042,6 +1045,35 @@ function setWaypointCutoff(wpi, val) {
   renderPaceTable(); // met à jour l'état danger (et masque/affiche la ligne barrière)
   autosave();
 }
+/** Supprime un point de passage (borne km, sommet ou point manuel). */
+function deleteWaypoint(wpi) {
+  const i = +wpi;
+  if (!Number.isInteger(i) || i < 0 || i >= state.waypoints.length) return;
+  state.waypoints.splice(i, 1);
+  renderWaypointMarkers();
+  renderPaceTable();
+  autosave();
+}
+
+/** Un point « borne kilométrique » automatique, non personnalisé (masquable en lot). */
+function isPlainKmWaypoint(w) {
+  return w.auto && !w.summit && !w.manual
+    && !w.icon && !w.color && !(w.info && w.info.trim()) && !w.cutoff
+    && /^\d+(\.\d+)?\s*km$/.test((w.label || '').trim());
+}
+
+/** Masque toutes les bornes kilométriques auto (garde sommets et points personnalisés). */
+function hideKmWaypoints() {
+  const before = state.waypoints.length;
+  state.waypoints = state.waypoints.filter((w) => !isPlainKmWaypoint(w));
+  const removed = before - state.waypoints.length;
+  if (!removed) { toast('Aucune borne kilométrique à masquer.'); return; }
+  renderWaypointMarkers();
+  renderPaceTable();
+  autosave();
+  toast(`${removed} borne${removed > 1 ? 's' : ''} kilométrique${removed > 1 ? 's' : ''} masquée${removed > 1 ? 's' : ''}.`);
+}
+
 /** Affiche la ligne « barrière horaire » (cachée par défaut) et ouvre le sélecteur. */
 function revealCutoff(btn) {
   const card = btn.closest('.pace-card');
@@ -1223,6 +1255,7 @@ function renderPaceTable() {
         ${headIco ? `<span class="pc-ico">${headIco}</span>` : ''}
         <input class="pr-name" type="text" value="${escapeHtml(name)}" data-wpi="${r.wpi}" aria-label="Nom du point" spellcheck="false">
         <span class="pc-km">${(r.d / 1000).toFixed(1)} km · ${fmtDuration(tSec)}</span>
+        ${r.wpi === 'finish' ? '' : `<button class="pr-del" data-wpi="${r.wpi}" type="button" title="Supprimer ce point" aria-label="Supprimer ce point">🗑️</button>`}
       </div>
       <div class="pc-deco">
         <div class="pc-icons">${WPT_ICONS.map((ic) =>

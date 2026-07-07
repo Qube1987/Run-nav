@@ -388,6 +388,20 @@ body { overflow: hidden; }
 .pace-card input.pr-name:hover { border-bottom-color: var(--line); }
 .pace-card input.pr-name:focus { outline: none; border-bottom-color: var(--accent-2); }
 .pc-km { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
+.pr-del {
+  flex: none; background: transparent; border: none; cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 4px 4px; border-radius: 8px;
+  opacity: 0.65;
+}
+.pr-del:hover { opacity: 1; }
+.pr-del:active { background: rgba(255, 90, 60, 0.15); }
+
+.pace-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+.tool-btn {
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tool-btn:active { background: var(--panel); }
 
 /* sélecteur pictogramme + couleur */
 .pc-deco { display: flex; flex-direction: column; gap: 6px; }
