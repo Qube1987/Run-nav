@@ -3,7 +3,7 @@
    - Tuiles de carte : cache runtime plafonné (les zones déjà vues restent dispo).
    - Supabase & autres POST : réseau uniquement (jamais mis en cache). */
 
-const VERSION = 'v16';
+const VERSION = 'v17';
 const SHELL_CACHE = `runnav-shell-${VERSION}`;
 const TILE_CACHE = `runnav-tiles-${VERSION}`;
 const TILE_MAX = 800;
@@ -12,6 +12,7 @@ const SHELL = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './js/app.js', './js/geo.js', './js/gpx.js', './js/climbs.js',
   './js/pacing.js', './js/profile.js', './js/map.js', './js/demo.js', './js/storage.js',
+  './js/auth.js',
   './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png',
   './vendor/leaflet/images/marker-shadow.png',

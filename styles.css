@@ -91,6 +91,66 @@ body { overflow: hidden; }
   background: rgba(255, 90, 60, 0.1); padding: 10px 12px; border-radius: 10px;
 }
 
+/* ---- Compte : inscription / connexion / « Mes épreuves » ---- */
+.auth-box {
+  margin-top: 18px; padding: 14px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+}
+.auth-fields { display: flex; flex-direction: column; gap: 8px; }
+.auth-fields input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 10px; padding: 12px; font-size: 16px;
+}
+.auth-fields input:focus { outline: none; border-color: var(--blue); }
+.auth-btns { display: flex; gap: 8px; margin-top: 10px; }
+.auth-btns .wide-btn { margin: 0; flex: 1; }
+.auth-btns .ghost-btn { margin: 0; flex: 1; }
+.auth-hint { margin-top: 10px; }
+
+.auth-who {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+}
+.auth-who strong { color: var(--text); }
+.link-btn {
+  background: none; border: none; color: var(--blue);
+  font-size: 13px; cursor: pointer; padding: 4px 6px;
+}
+.link-btn:active { opacity: 0.6; }
+
+.races-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.races-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.races-empty { margin: 4px 0 0; }
+.race-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 4px 4px 4px 12px;
+}
+.race-open {
+  flex: 1; text-align: left; background: none; border: none; color: var(--text);
+  font-size: 15px; font-weight: 600; padding: 9px 0; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.race-open .race-sub { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.race-del {
+  flex: 0 0 auto; background: none; border: none; color: var(--muted);
+  font-size: 17px; padding: 8px 10px; border-radius: 9px; cursor: pointer;
+}
+.race-del:active { background: rgba(255, 90, 60, 0.15); color: #ff8a7a; }
+
+.welcome-restore-wrap { margin-top: 16px; }
+.welcome-restore-wrap summary {
+  cursor: pointer; color: var(--muted); font-size: 14px; list-style: none;
+  padding: 6px 0; user-select: none;
+}
+.welcome-restore-wrap summary::-webkit-details-marker { display: none; }
+.welcome-restore-wrap summary::before { content: '▸ '; }
+.welcome-restore-wrap[open] summary::before { content: '▾ '; }
+
 .features {
   list-style: none; padding: 0; margin: 28px 0 0;
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;

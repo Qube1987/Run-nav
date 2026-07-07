@@ -14,7 +14,11 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
+  cloudListRaces, cloudDeleteRace,
 } from './storage.js';
+import {
+  isLoggedIn, currentUser, signup, login, logout,
+} from './auth.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -64,6 +68,15 @@ function init() {
   $('welcome-code').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') restoreFromCode($('welcome-code').value);
   });
+
+  // Compte : inscription / connexion / mes épreuves
+  $('auth-login').addEventListener('click', () => doAuth('login'));
+  $('auth-signup').addEventListener('click', () => doAuth('signup'));
+  $('auth-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth('login'); });
+  $('auth-logout').addEventListener('click', () => { logout(); updateAuthUI(); });
+  $('races-refresh').addEventListener('click', loadRaces);
+  $('races-list').addEventListener('click', onRacesClick);
+  updateAuthUI();
 
   $('act-load').addEventListener('click', () => $('gpx-input').click());
   $('act-start').addEventListener('click', toggleTracking);
@@ -816,6 +829,7 @@ async function cloudSaveNow() {
     await cloudSaveFull(state.cloudCode, state.gpxKey, state.track.name,
       buildConfig(), serializeTrack(), new Date().toISOString());
     toast(`Sauvegardé dans le cloud · code ${state.cloudCode}`);
+    if (isLoggedIn()) loadRaces(); // rafraîchit « Mes épreuves »
   } catch (e) {
     toast('Échec de la sauvegarde cloud (réseau ?).');
   } finally {
@@ -896,6 +910,103 @@ function afterConfigRestored() {
   renderWaypointMarkers();
   recomputePacing();
 }
+
+// ------------------------------------------------------------------ COMPTE / MES ÉPREUVES
+function showAuthError(msg) {
+  const el = $('auth-error');
+  if (!msg) { el.hidden = true; return; }
+  el.textContent = msg; el.hidden = false;
+}
+
+async function doAuth(kind) {
+  const user = ($('auth-user').value || '').trim();
+  const pass = $('auth-pass').value || '';
+  if (!user || pass.length < 4) {
+    showAuthError('Saisis un identifiant et un mot de passe (4 caractères min).');
+    return;
+  }
+  showAuthError('');
+  const btn = kind === 'signup' ? $('auth-signup') : $('auth-login');
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    if (kind === 'signup') await signup(user, pass);
+    else await login(user, pass);
+    $('auth-pass').value = '';
+    updateAuthUI();
+  } catch (e) {
+    showAuthError(e.message || 'Connexion impossible.');
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+function updateAuthUI() {
+  const on = isLoggedIn();
+  $('auth-out').hidden = on;
+  $('auth-in').hidden = !on;
+  showAuthError('');
+  if (on) {
+    $('auth-name').textContent = currentUser() || '—';
+    loadRaces();
+  }
+}
+
+async function loadRaces() {
+  if (!isLoggedIn()) return;
+  const list = $('races-list');
+  const empty = $('races-empty');
+  list.innerHTML = '<li class="hint" style="padding:6px 0">Chargement…</li>';
+  empty.hidden = true;
+  try {
+    const rows = await cloudListRaces();
+    list.innerHTML = '';
+    if (!rows.length) { empty.hidden = false; return; }
+    for (const r of rows) {
+      const li = document.createElement('li');
+      li.className = 'race-item';
+      const when = fmtRaceDate(r.updated_at);
+      li.innerHTML =
+        `<button class="race-open" data-code="${escAttr(r.code)}">` +
+        `${escHtml(r.name || 'Parcours')}` +
+        `<span class="race-sub">code ${escHtml(r.code)}${when ? ' · ' + when : ''}</span>` +
+        `</button>` +
+        `<button class="race-del" data-del="${escAttr(r.code)}" title="Supprimer">🗑️</button>`;
+      list.appendChild(li);
+    }
+  } catch (e) {
+    list.innerHTML = '';
+    showAuthError('Impossible de charger tes épreuves (réseau ?).');
+  }
+}
+
+function onRacesClick(e) {
+  const open = e.target.closest('[data-code]');
+  if (open) { restoreFromCode(open.dataset.code); return; }
+  const del = e.target.closest('[data-del]');
+  if (del) { deleteRace(del.dataset.del); }
+}
+
+async function deleteRace(code) {
+  if (!confirm('Supprimer cette épreuve enregistrée ?')) return;
+  try {
+    await cloudDeleteRace(code);
+    loadRaces();
+  } catch (e) {
+    showAuthError('Suppression impossible (réseau ?).');
+  }
+}
+
+function fmtRaceDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function escHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function escAttr(s) { return escHtml(s).replace(/'/g, '&#39;'); }
 
 // ------------------------------------------------------------------ INFOS / BARRIÈRES
 function getWpMeta(wpi) {
