@@ -282,38 +282,40 @@ body { overflow: hidden; }
 .cloud-box input { text-transform: uppercase; letter-spacing: 2px; }
 
 /* ---- Temps de passage : cartes ---- */
-.pace-table { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pace-table { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
 .pace-card {
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
-  padding: 9px 10px; display: flex; flex-direction: column; gap: 7px;
+  padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }
 .pace-card.passed { opacity: 0.55; }
 .pace-card.summit { border-color: rgba(232, 97, 60, 0.35); }
 .pace-card.danger { border-color: #e0484a; background: rgba(224, 72, 74, 0.10); }
 .pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.pc-label { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-label { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-km { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
-.pc-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-.pc-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.pc-cell > i { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--muted); }
-.pc-cell > b { font-weight: 700; font-variant-numeric: tabular-nums; }
-.pc-cell input {
-  width: 100%; min-width: 0; font-family: inherit; font-size: 13.5px; font-weight: 700;
-  border-radius: 8px; padding: 6px 5px; -webkit-appearance: none; appearance: none;
+
+.pc-field { display: flex; flex-direction: column; gap: 4px; }
+.pc-flabel {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--muted);
+}
+.pc-togo { font-style: normal; text-transform: none; letter-spacing: 0; color: var(--accent-2); font-weight: 700; }
+.pace-card input {
+  width: 100%; min-width: 0; font-family: inherit; font-size: 14px; font-weight: 600;
+  border-radius: 9px; padding: 9px 10px; -webkit-appearance: none; appearance: none;
 }
 input.pr-clock { color: var(--accent-2); background: rgba(255, 210, 74, 0.08); border: 1px solid rgba(255, 210, 74, 0.25); }
 input.pr-clock:focus { outline: none; border-color: var(--accent-2); }
-input.pr-cutoff { color: #ff8a8a; background: rgba(224, 72, 74, 0.08); border: 1px solid rgba(224, 72, 74, 0.28); }
+input.pr-cutoff { color: #ff9a9a; background: rgba(224, 72, 74, 0.08); border: 1px solid rgba(224, 72, 74, 0.28); }
 input.pr-cutoff:focus { outline: none; border-color: #e0484a; }
-.pc-info-row { display: flex; align-items: center; gap: 8px; }
 input.pr-info {
-  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); color: var(--text);
-  border-radius: 8px; padding: 7px 9px; font-size: 13px; font-family: inherit;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  font-weight: 400; font-size: 13px;
 }
 input.pr-info:focus { outline: none; border-color: var(--blue); }
-.pc-warn { flex: none; color: #ff8a8a; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.pc-ok { flex: none; color: var(--green); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.pace-card input::-webkit-calendar-picker-indicator { padding: 0; opacity: 0.5; }
+.pc-warn { color: #ff9a9a; font-size: 11px; font-weight: 700; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.pc-ok { color: var(--green); font-size: 11px; font-weight: 700; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.pace-card input::-webkit-calendar-picker-indicator { padding: 0; opacity: 0.5; filter: invert(0.8); }
 
 /* ============================= MARQUEURS CARTE ============================= */
 .pos-icon .pos-dot {

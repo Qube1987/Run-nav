@@ -187,17 +187,15 @@
         </div>
 
         <h3 class="sub">Horaires</h3>
-        <div class="field-row">
-          <div class="field">
-            <label>Heure de départ</label>
-            <input id="start-clock" type="time" />
-          </div>
-          <div class="field">
-            <label>Heure actuelle</label>
-            <div class="input-with-btn">
-              <input id="now-clock" type="time" />
-              <button id="now-reset" type="button" title="Mettre à l'heure du téléphone">⟳</button>
-            </div>
+        <div class="field">
+          <label>Date &amp; heure de départ</label>
+          <input id="start-clock" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Date &amp; heure actuelle</label>
+          <div class="input-with-btn">
+            <input id="now-clock" type="datetime-local" />
+            <button id="now-reset" type="button" title="Mettre à l'heure du téléphone">⟳</button>
           </div>
         </div>
         <button id="recale-now" class="wide-btn" type="button">
