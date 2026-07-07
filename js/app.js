@@ -19,12 +19,17 @@ import {
 import {
   isLoggedIn, currentUser, signup, login, logout,
 } from './auth.js';
+import {
+  broadcastPosition, setLiveActive, fetchLive,
+  uploadMedia, fetchMedia, mediaUrl,
+  postCheer, fetchCheers,
+} from './live.js';
 
 const $ = (id) => document.getElementById(id);
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -63,6 +68,19 @@ const state = {
   startedAt: null,     // ms du démarrage réel du suivi
   refSpeedFlat: null,  // m/s à plat (modèle)
   cumTime: null,
+  // volet live / followers
+  mode: 'athlete',      // 'athlete' | 'follower'
+  liveOn: false,        // athlète : diffusion de la position en cours
+  _liveLastSent: 0,     // throttle diffusion
+  followCode: null,     // follower : code de l'athlète suivi
+  followPseudo: null,   // follower : pseudo
+  athleteFix: null,     // follower : dernière position reçue de l'athlète
+  mediaMarks: [],       // marqueurs médias sur le profil
+  seenMedia: new Set(), // ids de médias déjà vus (notif)
+  seenCheers: new Set(),// ids d'encouragements déjà vus (notif)
+  lastCheerIso: null,
+  newFeed: 0, newInbox: 0,
+  _liveT: null, _mediaT: null, _cheerT: null,
   // persistance
   gpxKey: null,
   cloudCode: null,
@@ -79,6 +97,31 @@ function init() {
   $('welcome-code').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') restoreFromCode($('welcome-code').value);
   });
+
+  // Volet FOLLOWER : suivre un athlète en live
+  $('follow-btn').addEventListener('click', () => {
+    const box = $('follow-box');
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('follow-code').focus();
+  });
+  $('follow-go').addEventListener('click', () => followRace($('follow-code').value, $('follow-name').value));
+  $('follow-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') followRace($('follow-code').value, $('follow-name').value); });
+
+  // Athlète : média (photo/vidéo), partage, boîte de réception
+  $('act-photo').addEventListener('click', () => $('media-input').click());
+  $('media-input').addEventListener('change', onMediaPicked);
+  $('live-share').addEventListener('click', shareLive);
+  $('live-inbox').addEventListener('click', openInbox);
+  $('live-feed').addEventListener('click', openMediaFeed);
+  document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
+  document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
+  document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
+  $('media-list').addEventListener('click', onMediaListClick);
+
+  // Follower : encouragements
+  $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
+  $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
+  $('cheer-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCheer({ text: $('cheer-input').value }); });
 
   // Compte : inscription / connexion / mes épreuves
   $('auth-login').addEventListener('click', () => doAuth('login'));
@@ -191,6 +234,14 @@ function init() {
     b.classList.toggle('active', b.dataset.activity === state.activity));
 
   const ver = $('app-version'); if (ver) ver.textContent = APP_VERSION;
+
+  // Lien profond : run-nav…?follow=CODE → pré-remplit le suivi d'un athlète
+  const followParam = new URLSearchParams(location.search).get('follow');
+  if (followParam) {
+    $('follow-box').hidden = false;
+    $('follow-code').value = followParam.toUpperCase();
+    setTimeout(() => $('follow-name').focus(), 100);
+  }
 
   setupPWA();
 }
@@ -325,6 +376,7 @@ function loadGpxText(text, fallbackName) {
     const track = buildTrack(points);
     track.name = name || fallbackName || 'Parcours';
     state.rawPoints = points; // conservés pour la sauvegarde cloud de la trace
+    state.mode = 'athlete';
     startApp(track);
   } catch (err) {
     showWelcomeError(err.message || 'Erreur de lecture du GPX.');
@@ -339,6 +391,7 @@ function showWelcomeError(msg) {
 
 // ------------------------------------------------------------------ DÉMARRAGE APP
 function startApp(track) {
+  stopFollowerPolling(); stopInboxPolling(); // repart propre (changement d'épreuve)
   state.track = track;
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
@@ -413,6 +466,8 @@ function startApp(track) {
   recomputePacing();
   updateStatbar(0);
   setProfileView('full');
+  applyModeUI();
+  if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
   if (!state.hintShown) {
@@ -487,6 +542,7 @@ function toggleTracking() {
   btn.querySelector('.act-ico').textContent = '⏸';
   btn.querySelector('span:last-child').textContent = 'Suivi actif';
   toast('Suivi GPS démarré.');
+  startLiveBroadcast();
 }
 
 function stopTracking() {
@@ -499,6 +555,7 @@ function stopTracking() {
   btn.querySelector('.act-ico').textContent = '▶';
   btn.querySelector('span:last-child').textContent = 'Démarrer suivi GPS';
   toast('Suivi arrêté.');
+  stopLiveBroadcast();
 }
 
 function onGeoError(err) {
@@ -528,6 +585,9 @@ function onPosition(pos) {
     if (state.follow) state.map.panTo(lat, lon);
   }
   if (gpsSpeed != null) state.liveSpeed = gpsSpeed;
+
+  // diffusion live pour les followers (position réelle, même hors parcours)
+  if (state.liveOn) maybeBroadcast(lat, lon, proj.along, projected.ele);
 
   if (!state.onRoute) {
     // Hors parcours : on n'invente pas de position sur la trace.
@@ -845,6 +905,7 @@ function serializeTrack() {
     - Sinon, si l'utilisateur est connecté → on crée automatiquement la sauvegarde
       cloud (rattachée au compte) dès la première modification, sans rien cliquer. */
 function autosave() {
+  if (state.mode === 'follower') return; // un follower ne modifie/sauvegarde rien
   clearTimeout(state._saveT);
   state._saveT = setTimeout(() => {
     if (!state.track || !state.gpxKey) return;
@@ -908,6 +969,7 @@ async function restoreFromCode(code) {
     const track = buildTrack(rawPoints);
     track.name = track0.name || row.name || 'Parcours';
     state.rawPoints = rawPoints;
+    state.mode = 'athlete';
     startApp(track);              // construit carte + profil (applique aussi le local éventuel)
     applyConfig(row.data);        // puis on impose la config du cloud
     state.cloudCode = code;
@@ -1481,6 +1543,315 @@ function dtToMs(v) {
 function cutoffToDtValue(cutoff) {
   const ms = dtToMs(cutoff);
   return isFinite(ms) ? msToDtLocal(ms) : '';
+}
+
+// ================================================================== VOLET LIVE / FOLLOWERS
+function applyModeUI() {
+  const follower = state.mode === 'follower';
+  const ab = document.querySelector('.actionbar');
+  if (ab) ab.hidden = follower;
+  $('cheer-bar').hidden = !follower;
+  if (!follower) { $('live-banner').hidden = !state.liveOn; }
+}
+
+function ensureNotifyPermission() {
+  try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (_) { /* ignore */ }
+}
+function notify(title, body) {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body: body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' });
+    }
+  } catch (_) { /* ignore */ }
+  toast(title + (body ? ' · ' + body : ''));
+}
+function fmtAgo(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return 'à l’instant';
+  if (s < 3600) return Math.floor(s / 60) + ' min';
+  if (s < 86400) return Math.floor(s / 3600) + ' h';
+  return Math.floor(s / 86400) + ' j';
+}
+
+// ------------------------------------------------------- ATHLÈTE : diffusion + partage
+/** Crée la sauvegarde cloud (code rattaché au compte) si elle n'existe pas encore. */
+async function ensureCloudCode() {
+  if (state.cloudCode) return state.cloudCode;
+  const code = makeCode();
+  await cloudSaveFull(code, state.gpxKey, state.track.name, buildConfig(), serializeTrack(), new Date().toISOString());
+  state.cloudCode = code;
+  localSet('code:' + state.gpxKey, code);
+  const el = $('cloud-code'); if (el) el.textContent = code;
+  return code;
+}
+
+async function startLiveBroadcast() {
+  if (state.mode !== 'athlete') return;
+  if (!isLoggedIn()) { toast('Connecte-toi pour partager ton suivi en live à tes supporters.'); return; }
+  try { await ensureCloudCode(); } catch (_) { toast('Impossible de démarrer le live (réseau ?).'); return; }
+  state.liveOn = true;
+  state._liveLastSent = 0;
+  broadcastPosition(state.cloudCode, { athlete_name: currentUser() || 'Athlète', active: true }).catch(() => {});
+  ensureNotifyPermission();
+  startInboxPolling();
+  updateLiveBanner();
+  toast(`🔴 Live activé · partage le code ${state.cloudCode} à tes supporters.`);
+}
+function stopLiveBroadcast() {
+  if (!state.liveOn) return;
+  state.liveOn = false;
+  if (state.cloudCode) setLiveActive(state.cloudCode, false).catch(() => {});
+  stopInboxPolling();
+  updateLiveBanner();
+}
+function maybeBroadcast(lat, lon, d, ele) {
+  const now = Date.now();
+  if (now - state._liveLastSent < 5000) return;
+  state._liveLastSent = now;
+  broadcastPosition(state.cloudCode, {
+    athlete_name: currentUser() || 'Athlète',
+    lat, lon, d, ele, speed: state.liveSpeed || 0, active: true,
+  }).catch(() => {});
+}
+function updateLiveBanner() {
+  if (state.mode === 'follower') return;
+  const b = $('live-banner');
+  if (!state.liveOn) { b.hidden = true; return; }
+  b.hidden = false; b.classList.remove('offline');
+  $('live-text').textContent = `🔴 En live · code ${state.cloudCode}`;
+  $('live-share').hidden = false;
+  $('live-inbox').hidden = false;
+  $('live-feed').hidden = false;
+}
+async function shareLive() {
+  const code = state.mode === 'follower' ? state.followCode : state.cloudCode;
+  if (!code) return;
+  const url = `${location.origin}${location.pathname}?follow=${code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Run-Nav — suivi live', text: `Suis ma course en live : ${url}`, url });
+    else { await navigator.clipboard.writeText(url); toast('Lien de suivi copié !'); }
+  } catch (_) { /* partage annulé */ }
+}
+
+// ------------------------------------------------------- ATHLÈTE : médias
+async function onMediaPicked(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!isLoggedIn()) { toast('Connecte-toi pour poster une photo/vidéo.'); return; }
+  if (file.size > 50 * 1024 * 1024) { toast('Fichier trop lourd (50 Mo max).'); return; }
+  let code;
+  try { code = await ensureCloudCode(); } catch (_) { toast('Impossible (réseau ?).'); return; }
+  const caption = prompt('Légende (optionnel) :', '') || '';
+  const d = (state.lastFix && state.lastFix.d != null) ? state.lastFix.d : (state.scrubD || 0);
+  const p = pointAtDistance(state.track.points, d);
+  const lat = (state.lastFix && state.lastFix.lat != null) ? state.lastFix.lat : p.lat;
+  const lon = (state.lastFix && state.lastFix.lon != null) ? state.lastFix.lon : p.lon;
+  toast('📤 Envoi du média…');
+  try {
+    await uploadMedia(code, file, { caption, lat, lon, d });
+    toast('📸 Média publié ! Tes followers seront notifiés.');
+  } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
+}
+
+// ------------------------------------------------------- ATHLÈTE : boîte de réception
+function startInboxPolling() {
+  stopInboxPolling();
+  state._inboxLoaded = false;
+  pollInbox();
+  state._cheerT = setInterval(pollInbox, 12000);
+}
+function stopInboxPolling() { if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; } }
+async function pollInbox() {
+  if (!state.cloudCode) return;
+  const list = await fetchCheers(state.cloudCode);
+  state._cheers = list;
+  if (state._inboxLoaded) {
+    const news = list.filter((c) => !state.seenCheers.has(c.id));
+    if (news.length) {
+      state.newInbox += news.length;
+      const c = news[0];
+      notify('💬 ' + (c.author || 'Supporter'), c.is_like ? 'a envoyé un ❤️' : (c.text || ''));
+    }
+  }
+  list.forEach((c) => state.seenCheers.add(c.id));
+  state._inboxLoaded = true;
+  updateInboxBadge();
+}
+function updateInboxBadge() {
+  $('inbox-count').textContent = state._cheers ? state._cheers.length : 0;
+  $('live-inbox').classList.toggle('has-new', state.newInbox > 0);
+}
+async function openInbox() {
+  state.newInbox = 0; updateInboxBadge();
+  const list = state._cheers || await fetchCheers(state.cloudCode);
+  renderInbox(list);
+  $('inbox-sheet').hidden = false;
+}
+function renderInbox(list) {
+  $('inbox-empty').hidden = list.length > 0;
+  $('inbox-list').innerHTML = list.map((c) => `<div class="cheer-row${c.is_like ? ' like' : ''}">
+      <span class="cheer-who">${escapeHtml(c.author || 'Supporter')}</span>
+      <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
+      <span class="cheer-when">${fmtAgo(c.created_at)}</span>
+    </div>`).join('');
+}
+
+// ------------------------------------------------------- FOLLOWER
+async function followRace(code, pseudo) {
+  code = (code || '').trim().toUpperCase();
+  pseudo = (pseudo || '').trim();
+  if (code.length < 4) { showWelcomeError('Saisis le code de l’athlète.'); return; }
+  if (!pseudo) { showWelcomeError('Choisis un prénom / pseudo.'); return; }
+  const btn = $('follow-go'); const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const row = await cloudLoad(code);
+    if (!row) { showWelcomeError('Aucune course pour ce code.'); return; }
+    let track0 = row.track;
+    if (typeof track0 === 'string') { try { track0 = JSON.parse(track0); } catch (_) { track0 = null; } }
+    if (!track0 || !Array.isArray(track0.pts) || track0.pts.length < 2) {
+      showWelcomeError('Cette course n’a pas de trace partagée.'); return;
+    }
+    const rawPoints = track0.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] }));
+    const track = buildTrack(rawPoints);
+    track.name = track0.name || row.name || 'Course';
+    state.rawPoints = rawPoints;
+    state.mode = 'follower';
+    state.followCode = code;
+    state.followPseudo = pseudo;
+    localSet('pseudo', pseudo);
+    startApp(track);
+    applyConfig(row.data);
+    afterConfigRestored();
+    enterFollowerMode();
+  } catch (e) {
+    showWelcomeError('Impossible de suivre (réseau ?).');
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+function enterFollowerMode() {
+  applyModeUI();
+  state.follow = false;
+  state.seenMedia = new Set(); state._mediaLoaded = false;
+  state.newFeed = 0;
+  ensureNotifyPermission();
+  $('live-banner').hidden = false;
+  updateFollowerBanner(null);
+  startFollowerPolling();
+  toast(`👀 Tu suis « ${state.track.name} » en live.`);
+}
+function startFollowerPolling() {
+  stopFollowerPolling();
+  pollFollower();
+  state._liveT = setInterval(pollFollower, 5000);
+}
+function stopFollowerPolling() { if (state._liveT) { clearInterval(state._liveT); state._liveT = null; } }
+async function pollFollower() {
+  const code = state.followCode; if (!code) return;
+  const live = await fetchLive(code);
+  updateFollowerBanner(live);
+  if (live && live.lat != null) renderAthletePosition(live);
+  const media = await fetchMedia(code);
+  handleFollowerMedia(media);
+}
+function updateFollowerBanner(live) {
+  const b = $('live-banner');
+  b.hidden = false;
+  $('live-feed').hidden = false;
+  $('live-inbox').hidden = true;
+  $('live-share').hidden = false;
+  const name = (live && live.athlete_name) || state.track.name || 'Athlète';
+  const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
+  if (live && live.active && fresh) {
+    b.classList.remove('offline');
+    const km = live.d != null ? ` · ${(live.d / 1000).toFixed(1)} km` : '';
+    $('live-text').textContent = `🔴 ${name} en live${km}`;
+  } else {
+    b.classList.add('offline');
+    $('live-text').textContent = live ? `${name} · hors ligne` : `${name} · pas encore parti`;
+  }
+}
+function renderAthletePosition(live) {
+  state.athleteFix = live;
+  const proj = projectOnTrack({ lat: live.lat, lon: live.lon }, state.track.points, state.hint);
+  state.hint = proj.index;
+  const projected = pointAtDistance(state.track.points, proj.along);
+  if (state.map) {
+    state.map.setPosition(live.lat, live.lon, 0, null);
+    state.map.setProgress(proj.index, projected);
+    state.map.highlightCursor(projected.lat, projected.lon);
+  }
+  const d = live.d != null ? live.d : proj.along;
+  state.lastFix = { lat: live.lat, lon: live.lon, d, index: proj.index, onRoute: true, t: Date.now() };
+  state.liveSpeed = live.speed || 0;
+  state.profile.setCursor(d);
+  updateStatbar(d, 0);
+  updateClimbBanner(d);
+}
+function handleFollowerMedia(media) {
+  state._media = media;
+  if (state._mediaLoaded) {
+    const news = media.filter((m) => !state.seenMedia.has(m.id));
+    if (news.length) {
+      state.newFeed += news.length;
+      const m = news[0];
+      notify(`📸 Nouvelle ${m.kind === 'video' ? 'vidéo' : 'photo'}`, m.caption || `de ${(state.athleteFix && state.athleteFix.athlete_name) || 'l’athlète'}`);
+    }
+  }
+  media.forEach((m) => state.seenMedia.add(m.id));
+  state._mediaLoaded = true;
+  updateFeedBadge();
+}
+async function sendCheer({ is_like, text }) {
+  if (state.mode !== 'follower' || !state.followCode) return;
+  text = (text || '').trim();
+  if (!is_like && !text) return;
+  const ok = await postCheer(state.followCode, {
+    author: state.followPseudo || 'Supporter', is_like: !!is_like, text: text || null,
+  });
+  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
+  if (is_like) { const bt = $('cheer-like'); bt.classList.remove('pop'); void bt.offsetWidth; bt.classList.add('pop'); toast('❤️ Envoyé !'); }
+  else { $('cheer-input').value = ''; toast('💬 Message envoyé !'); }
+}
+
+// ------------------------------------------------------- MÉDIAS : fil + visionneuse (partagé)
+function updateFeedBadge() {
+  const n = state._media ? state._media.length : 0;
+  $('feed-count').textContent = n;
+  $('live-feed').classList.toggle('has-new', state.newFeed > 0);
+}
+async function openMediaFeed() {
+  state.newFeed = 0;
+  const code = state.mode === 'follower' ? state.followCode : state.cloudCode;
+  const list = state._media || (code ? await fetchMedia(code) : []);
+  state._media = list;
+  renderMediaList(list);
+  $('media-sheet').hidden = false;
+  updateFeedBadge();
+}
+function renderMediaList(list) {
+  $('media-empty').hidden = list.length > 0;
+  $('media-list').innerHTML = list.map((m) => {
+    const url = mediaUrl(m.path);
+    const thumb = m.kind === 'video'
+      ? `<video src="${url}#t=0.1" preload="metadata" muted playsinline></video><span class="mi-play">▶</span>`
+      : `<img src="${url}" loading="lazy" alt="">`;
+    const cap = m.caption ? `<span class="mi-cap">${escapeHtml(m.caption)}</span>` : '';
+    return `<div class="media-item" data-kind="${m.kind}" data-url="${escAttr(url)}" data-cap="${escAttr(m.caption || '')}">${thumb}${cap}</div>`;
+  }).join('');
+}
+function onMediaListClick(e) {
+  const it = e.target.closest('.media-item'); if (!it) return;
+  openMediaViewer(it.dataset.kind, it.dataset.url, it.dataset.cap);
+}
+function openMediaViewer(kind, url, cap) {
+  $('mv-body').innerHTML = kind === 'video'
+    ? `<video src="${url}" controls autoplay playsinline></video>`
+    : `<img src="${url}" alt="">`;
+  $('mv-cap').textContent = cap || '';
+  $('media-view').hidden = false;
 }
 
 init();

@@ -76,6 +76,16 @@
         <p id="auth-error" class="welcome-error" hidden></p>
       </div>
 
+      <div class="follow-cta">
+        <button id="follow-btn" class="ghost-btn" type="button">👀 Suivre un athlète en live</button>
+        <div id="follow-box" class="follow-box" hidden>
+          <input id="follow-code" type="text" inputmode="text" autocapitalize="characters"
+                 maxlength="8" placeholder="Code de l'athlète" />
+          <input id="follow-name" type="text" maxlength="24" placeholder="Ton prénom / pseudo" />
+          <button id="follow-go" type="button">👀 Suivre en live</button>
+        </div>
+      </div>
+
       <details class="welcome-restore-wrap">
         <summary>Ouvrir par code de partage</summary>
         <div class="welcome-restore">
@@ -128,6 +138,17 @@
       </div>
     </header>
 
+    <!-- Bandeau live (athlète : diffusion + partage ; follower : statut de l'athlète) -->
+    <div id="live-banner" class="live-banner" hidden>
+      <span class="lb-dot"></span>
+      <span id="live-text" class="lb-text">En live</span>
+      <div class="lb-actions">
+        <button id="live-share" class="lb-btn" type="button" hidden>🔗 Partager</button>
+        <button id="live-feed" class="lb-btn" type="button" hidden>📷 <span id="feed-count">0</span></button>
+        <button id="live-inbox" class="lb-btn" type="button" hidden>💬 <span id="inbox-count">0</span></button>
+      </div>
+    </div>
+
     <!-- Bandeau "hors parcours" -->
     <div id="offroute-banner" class="offroute-banner" hidden>
       <span class="or-icon">🧭</span>
@@ -178,6 +199,9 @@
       <button id="act-wpt" class="act" type="button" title="Ajouter un point de passage">
         <span class="act-ico">📌</span><span>Point</span>
       </button>
+      <button id="act-photo" class="act" type="button" title="Photo / vidéo géolocalisée">
+        <span class="act-ico">📸</span><span>Média</span>
+      </button>
       <button id="act-pace" class="act" type="button" title="Réglages allure">
         <span class="act-ico">⚙️</span><span>Allure</span>
       </button>
@@ -185,6 +209,14 @@
         <span class="act-ico">📂</span><span>GPX</span>
       </button>
     </nav>
+    <input id="media-input" type="file" accept="image/*,video/*" capture="environment" hidden />
+
+    <!-- Barre d'encouragement (mode follower) -->
+    <div id="cheer-bar" class="cheer-bar" hidden>
+      <button id="cheer-like" class="cheer-like" type="button" title="Envoyer un like">❤️</button>
+      <input id="cheer-input" type="text" maxlength="200" placeholder="Encourage l'athlète…" />
+      <button id="cheer-send" class="cheer-send" type="button">Envoyer</button>
+    </div>
   </div>
 
   <!-- ====================== PANNEAU ALLURE / TEMPS DE PASSAGE ====================== -->
@@ -267,6 +299,43 @@
         <div id="pace-table" class="pace-table"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Fil des photos / vidéos -->
+  <div id="media-sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-mclose></div>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>📷 Photos &amp; vidéos</h2>
+        <button class="sheet-close" data-mclose type="button">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="hint" id="media-empty" hidden>Aucun média pour l'instant.</p>
+        <div id="media-list" class="media-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Boîte de réception des encouragements (athlète) -->
+  <div id="inbox-sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-iclose></div>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>💬 Encouragements</h2>
+        <button class="sheet-close" data-iclose type="button">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="hint" id="inbox-empty" hidden>Aucun message pour l'instant. Partage ton code à tes supporters !</p>
+        <div id="inbox-list" class="inbox-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visionneuse plein écran d'un média -->
+  <div id="media-view" class="media-view" hidden>
+    <button class="mv-close" data-vclose type="button">✕</button>
+    <div id="mv-body" class="mv-body"></div>
+    <div id="mv-cap" class="mv-cap"></div>
   </div>
 
   <!-- Fiche d'un point de passage -->
