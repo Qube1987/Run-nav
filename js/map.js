@@ -109,8 +109,8 @@ export class RaceMap {
       html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
       size = [28, 28]; anchor = [14, 28];
     } else {
-      // plusieurs dispos → chip arrondi listant toutes les icônes
-      const w = 10 + list.length * 18;
+      // plusieurs dispos → icônes superposées (empilées) sur un même repère
+      const w = 26 + (list.length - 1) * 10;
       const inner = list.map((i) => `<span>${i}</span>`).join('');
       html = `<div class="wpt-chip${isBar ? ' has-bar' : ''}" style="background:${color}">${inner}${badge}</div>`;
       size = [w, 26]; anchor = [w / 2, 26];
