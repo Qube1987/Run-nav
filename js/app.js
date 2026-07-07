@@ -13,7 +13,7 @@ import {
 } from './pacing.js';
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
-  cloudSave, cloudLoad, makeCode,
+  cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
 } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -54,6 +54,11 @@ const state = {
 function init() {
   $('gpx-input').addEventListener('change', onFilePicked);
   $('demo-btn').addEventListener('click', () => loadGpxText(demoGpx(), 'Parcours démo'));
+
+  $('welcome-restore-btn').addEventListener('click', () => restoreFromCode($('welcome-code').value));
+  $('welcome-code').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') restoreFromCode($('welcome-code').value);
+  });
 
   $('act-load').addEventListener('click', () => $('gpx-input').click());
   $('act-start').addEventListener('click', toggleTracking);
@@ -186,6 +191,7 @@ function loadGpxText(text, fallbackName) {
     const { points, name } = parseGpx(text);
     const track = buildTrack(points);
     track.name = name || fallbackName || 'Parcours';
+    state.rawPoints = points; // conservés pour la sauvegarde cloud de la trace
     startApp(track);
   } catch (err) {
     showWelcomeError(err.message || 'Erreur de lecture du GPX.');
@@ -631,7 +637,19 @@ function applyConfig(cfg) {
   }
 }
 
-/** Sauvegarde locale immédiate (débounce) + cloud si un code existe. */
+/** Trace GPX compacte pour le cloud : points bruts [lat, lon, ele]. */
+function serializeTrack() {
+  const raw = state.rawPoints || state.track.points;
+  return {
+    name: state.track.name,
+    pts: raw.map((p) => [
+      +(+p.lat).toFixed(6), +(+p.lon).toFixed(6),
+      p.ele == null ? null : +(+p.ele).toFixed(1),
+    ]),
+  };
+}
+
+/** Sauvegarde locale immédiate (débounce) + mise à jour cloud de la config si un code existe. */
 function autosave() {
   clearTimeout(state._saveT);
   state._saveT = setTimeout(() => {
@@ -639,7 +657,7 @@ function autosave() {
     const cfg = buildConfig();
     localSave(state.gpxKey, cfg);
     if (state.cloudCode) {
-      cloudSave(state.cloudCode, state.gpxKey, state.track.name, cfg, new Date().toISOString())
+      cloudSaveConfig(state.cloudCode, cfg, new Date().toISOString())
         .catch(() => { /* hors-ligne : le local suffit */ });
     }
   }, 700);
@@ -655,12 +673,45 @@ async function cloudSaveNow() {
   const btn = $('cloud-save');
   btn.disabled = true; btn.textContent = '☁️ Sauvegarde…';
   try {
-    await cloudSave(state.cloudCode, state.gpxKey, state.track.name, buildConfig(), new Date().toISOString());
+    await cloudSaveFull(state.cloudCode, state.gpxKey, state.track.name,
+      buildConfig(), serializeTrack(), new Date().toISOString());
     toast(`Sauvegardé dans le cloud · code ${state.cloudCode}`);
   } catch (e) {
     toast('Échec de la sauvegarde cloud (réseau ?).');
   } finally {
     btn.disabled = false; btn.textContent = '☁️ Sauvegarder dans le cloud';
+  }
+}
+
+/** Ouvre un parcours complet directement à partir d'un code (écran d'accueil). */
+async function restoreFromCode(code) {
+  code = (code || '').trim().toUpperCase();
+  if (code.length < 4) { showWelcomeError('Saisis un code valide.'); return; }
+  const btn = $('welcome-restore-btn');
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const row = await cloudLoad(code);
+    if (!row) { showWelcomeError('Aucune sauvegarde pour ce code.'); return; }
+    if (!row.track || !row.track.pts || row.track.pts.length < 2) {
+      showWelcomeError('Cette sauvegarde ne contient pas de parcours. Charge le GPX puis restaure via le panneau Allure.');
+      return;
+    }
+    const rawPoints = row.track.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] }));
+    const track = buildTrack(rawPoints);
+    track.name = row.track.name || row.name || 'Parcours';
+    state.rawPoints = rawPoints;
+    startApp(track);              // construit carte + profil (applique aussi le local éventuel)
+    applyConfig(row.data);        // puis on impose la config du cloud
+    state.cloudCode = code;
+    localSet('code:' + state.gpxKey, code);
+    localSave(state.gpxKey, buildConfig());
+    afterConfigRestored();
+    toast(`« ${track.name} » restauré depuis le cloud.`);
+  } catch (e) {
+    showWelcomeError('Restauration impossible (réseau ?).');
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
   }
 }
 

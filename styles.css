@@ -71,6 +71,21 @@ body { overflow: hidden; }
 .ios-install { margin-top: 12px; text-align: center; }
 .ios-install b { color: var(--text); }
 
+.welcome-restore { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.welcome-restore input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 12px; padding: 13px; font-size: 16px;
+  text-transform: uppercase; letter-spacing: 4px; text-align: center;
+}
+.welcome-restore input::placeholder { letter-spacing: normal; text-transform: none; }
+.welcome-restore input:focus { outline: none; border-color: var(--blue); }
+.welcome-restore button {
+  width: 100%; padding: 13px; background: var(--blue); color: #fff;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.welcome-restore button:active { transform: scale(0.98); }
+.welcome-restore button:disabled { opacity: 0.6; }
+
 .welcome-error {
   margin-top: 14px; color: #ff8a7a; font-size: 14px;
   background: rgba(255, 90, 60, 0.1); padding: 10px 12px; border-radius: 10px;

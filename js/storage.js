@@ -31,9 +31,9 @@ function headers() {
   return { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
 }
 
-/** Upsert d'une config dans le cloud (clé primaire = code). */
-export async function cloudSave(code, gpxKey, name, data, isoNow) {
-  const body = { code, gpx_key: gpxKey, name: name || null, data, updated_at: isoNow };
+/** Sauvegarde complète (config + trace GPX) — upsert par code. */
+export async function cloudSaveFull(code, gpxKey, name, data, track, isoNow) {
+  const body = { code, gpx_key: gpxKey, name: name || null, data, track, updated_at: isoNow };
   const res = await fetch(`${SB_URL}/rest/v1/${TABLE}`, {
     method: 'POST',
     headers: { ...headers(), Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -42,9 +42,20 @@ export async function cloudSave(code, gpxKey, name, data, isoNow) {
   if (!res.ok) throw new Error('cloud save ' + res.status);
 }
 
-/** Récupère une config par code. Renvoie { data, name, gpx_key } ou null. */
+/** Mise à jour de la config seule (autosave) — la trace reste inchangée. */
+export async function cloudSaveConfig(code, data, isoNow) {
+  const url = `${SB_URL}/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { ...headers(), Prefer: 'return=minimal' },
+    body: JSON.stringify({ data, updated_at: isoNow }),
+  });
+  if (!res.ok) throw new Error('cloud patch ' + res.status);
+}
+
+/** Récupère une sauvegarde par code. Renvoie { data, name, gpx_key, track } ou null. */
 export async function cloudLoad(code) {
-  const url = `${SB_URL}/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}&select=data,name,gpx_key`;
+  const url = `${SB_URL}/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}&select=data,name,gpx_key,track`;
   const res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('cloud load ' + res.status);
   const rows = await res.json();
