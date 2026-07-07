@@ -90,14 +90,15 @@ function init() {
     const s = parseHHMM(e.target.value); if (s) { state.targetSec = s; recomputePacing(); autosave(); }
   });
   $('start-clock').addEventListener('input', (e) => {
-    if (e.target.value) { state.startClock = clockToMs(e.target.value); recomputePacing(); autosave(); }
+    const ms = dtToMs(e.target.value);
+    if (isFinite(ms)) { state.startClock = ms; recomputePacing(); autosave(); }
   });
   $('now-clock').addEventListener('input', (e) => {
     state.nowClockStr = e.target.value || null;
   });
   $('now-reset').addEventListener('click', () => {
     state.nowClockStr = null;
-    $('now-clock').value = fmtClock(Date.now());
+    $('now-clock').value = msToDtLocal(Date.now());
   });
   $('recale-now').addEventListener('click', recalibrateFromNow);
 
@@ -321,7 +322,7 @@ function toggleTracking() {
   state.startedAt = Date.now();
   state.onRoute = null; // réévalué au premier point
   // si aucune heure de départ n'a été fixée, on part de maintenant
-  if (state.startClock == null) { state.startClock = state.startedAt; $('start-clock').value = fmtClock(state.startClock); }
+  if (state.startClock == null) { state.startClock = state.startedAt; $('start-clock').value = msToDtLocal(state.startClock); }
   recomputePacing();
 
   state.watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
@@ -493,9 +494,8 @@ function clockAt(d) {
 /** Heure "actuelle" de référence : saisie manuelle si présente, sinon horloge du téléphone. */
 function currentNowMs() {
   if (state.nowClockStr) {
-    let ms = clockToMs(state.nowClockStr);
-    if (state.startClock != null && ms < state.startClock) ms += 86400000; // passage après minuit
-    return ms;
+    const ms = dtToMs(state.nowClockStr);
+    if (isFinite(ms)) return ms;
   }
   return Date.now();
 }
@@ -641,7 +641,7 @@ function setActivity(act) {
 function buildConfig() {
   return {
     version: 1,
-    startStr: state.startClock != null ? fmtClock(state.startClock) : null,
+    startStr: state.startClock != null ? msToDtLocal(state.startClock) : null,
     activity: state.activity,
     paceMode: state.paceMode,
     manualKmh: state.manualKmh,
@@ -660,7 +660,7 @@ function applyConfig(cfg) {
   if (cfg.paceMode) state.paceMode = cfg.paceMode;
   if (typeof cfg.manualKmh === 'number') { state.manualKmh = cfg.manualKmh; state.speedCustomized = true; }
   if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
-  if (cfg.startStr) state.startClock = clockToMs(cfg.startStr);
+  if (cfg.startStr) { const ms = dtToMs(cfg.startStr); if (isFinite(ms)) state.startClock = ms; }
   if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null };
   if (Array.isArray(cfg.waypoints) && cfg.waypoints.length) {
     state.waypoints = cfg.waypoints.map((w) => {
@@ -789,7 +789,7 @@ function afterConfigRestored() {
   $('field-manual').hidden = state.paceMode !== 'manual';
   $('field-target').hidden = state.paceMode !== 'target';
   $('manual-speed').value = state.manualKmh.toFixed(1);
-  if (state.startClock != null) $('start-clock').value = fmtClock(state.startClock);
+  if (state.startClock != null) $('start-clock').value = msToDtLocal(state.startClock);
   renderWaypointMarkers();
   recomputePacing();
 }
@@ -861,40 +861,46 @@ function renderPaceTable() {
   const rows = state.waypoints.map((w, i) => ({ d: w.d, label: w.label, summit: w.summit, meta: w, wpi: String(i) }));
   rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false, meta: state.finishMeta, wpi: 'finish' });
 
-  const posD = state.lastFix && state.lastFix.onRoute ? state.lastFix.d : -1;
+  // position/instant de référence pour "temps restant jusqu'au point"
+  const onRouteNow = state.lastFix && state.lastFix.onRoute;
+  const posD = onRouteNow ? state.lastFix.d : -1;
+  const refSec = onRouteNow ? timeAtDistance(pts, cum, state.lastFix.d) : 0;
+
   let html = '';
   for (const r of rows) {
-    const tSec = timeAtDistance(pts, cum, r.d);
-    const predMs = clockAt(r.d);
-    const clock = fmtClock(predMs);
+    const tSec = timeAtDistance(pts, cum, r.d);          // temps de course cumulé (depuis le départ)
+    const predMs = clockAt(r.d);                         // heure d'arrivée estimée
     const passed = posD >= r.d - 20;
+    const toGoSec = tSec - refSec;                        // temps estimé jusqu'à ce point
     const info = r.meta.info || '';
-    const cutoff = r.meta.cutoff || '';
+    const cutoffVal = cutoffToDtValue(r.meta.cutoff);
 
-    // état barrière horaire
+    // état barrière horaire (jour + heure)
     let danger = false, badge = '';
-    if (cutoff) {
-      let cutMs = clockToMs(cutoff);
-      if (cutMs < baseStart()) cutMs += 86400000;
+    const cutMs = dtToMs(r.meta.cutoff);
+    if (isFinite(cutMs)) {
       const marginSec = (cutMs - predMs) / 1000;
-      if (marginSec < 0) { danger = true; badge = `<span class="pc-warn">⚠ +${fmtDuration(-marginSec)}</span>`; }
-      else badge = `<span class="pc-ok">✓ ${fmtDuration(marginSec)}</span>`;
+      if (marginSec < 0) { danger = true; badge = `<span class="pc-warn">⚠ barrière +${fmtDuration(-marginSec)}</span>`; }
+      else badge = `<span class="pc-ok">✓ marge ${fmtDuration(marginSec)}</span>`;
     }
+
+    const toGo = passed ? '✓ passé'
+      : (toGoSec > 0 ? `⏱ dans ${fmtDuration(toGoSec)}` : '⏱ imminent');
 
     html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}">
       <div class="pc-head">
         <span class="pc-label">${r.summit ? '⛰️ ' : ''}${escapeHtml(r.label)}</span>
-        <span class="pc-km">${(r.d / 1000).toFixed(1)} km</span>
+        <span class="pc-km">${(r.d / 1000).toFixed(1)} km · ${fmtDuration(tSec)}</span>
       </div>
-      <div class="pc-row">
-        <span class="pc-cell"><i>Temps</i><b>${fmtDuration(tSec)}</b></span>
-        <label class="pc-cell"><i>Heure ✎</i><input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Heure de passage"></label>
-        <label class="pc-cell"><i>Barrière ✎</i><input class="pr-cutoff" type="time" value="${cutoff}" data-wpi="${r.wpi}" aria-label="Barrière horaire"></label>
-      </div>
-      <div class="pc-info-row">
-        <input class="pr-info" type="text" value="${escapeHtml(info)}" data-wpi="${r.wpi}" placeholder="ℹ️ ravito, note, matériel…">
-        ${badge}
-      </div>
+      <label class="pc-field">
+        <span class="pc-flabel">Arrivée estimée ✎ <em class="pc-togo">${toGo}</em></span>
+        <input class="pr-clock" type="datetime-local" value="${msToDtLocal(predMs)}" data-d="${r.d}" aria-label="Heure d'arrivée estimée">
+      </label>
+      <label class="pc-field">
+        <span class="pc-flabel">Barrière horaire (jour &amp; heure) ✎ ${badge}</span>
+        <input class="pr-cutoff" type="datetime-local" value="${cutoffVal}" data-wpi="${r.wpi}" aria-label="Barrière horaire">
+      </label>
+      <input class="pr-info" type="text" value="${escapeHtml(info)}" data-wpi="${r.wpi}" placeholder="ℹ️ ravito, note, matériel…">
     </div>`;
   }
   tbl.innerHTML = html;
@@ -909,11 +915,12 @@ function escapeHtml(s) {
  * Édite un temps de passage cible sur un point : on recalibre l'allure pour
  * atteindre ce point à l'heure demandée, et tout le reste se recalcule.
  */
-function editWaypointTime(d, hhmm) {
+function editWaypointTime(d, value) {
   const start = state.startClock || Date.now();
-  let targetMs = clockToMs(hhmm);
-  let targetSec = (targetMs - start) / 1000;
-  if (targetSec <= 60) targetSec += 86400; // heure passée => jour suivant (courses longues)
+  const targetMs = dtToMs(value);
+  if (!isFinite(targetMs)) return;
+  const targetSec = (targetMs - start) / 1000;
+  if (targetSec <= 60) { toast('Heure d’arrivée antérieure au départ.'); renderPaceTable(); return; }
 
   const ref = calibrateForTimeAtDistance(state.track.points, d, targetSec);
   if (!ref || !isFinite(ref) || ref <= 0) { toast('Heure impossible pour ce point.'); return; }
@@ -923,17 +930,17 @@ function editWaypointTime(d, hhmm) {
   state.speedCustomized = true;
   $('manual-speed').value = avgKmh.toFixed(1);    // affichage arrondi
   setPaceMode('manual'); // recalcule tout et affiche la table à jour
-  toast(`Allure calée : ${avgKmh.toFixed(1)} km/h moy. pour passer à ${hhmm}.`);
+  toast(`Allure calée : ${avgKmh.toFixed(1)} km/h moy. pour passer à ${fmtClockRel(targetMs)}.`);
 }
 
 // ------------------------------------------------------------------ FEUILLE / SHEET
 function openSheet(open) {
   $('pace-sheet').hidden = !open;
   if (!open) return;
-  // pré-remplissage des heures
+  // pré-remplissage des dates/heures
   if (state.startClock == null) state.startClock = Date.now();
-  $('start-clock').value = fmtClock(state.startClock);
-  $('now-clock').value = state.nowClockStr || fmtClock(Date.now());
+  $('start-clock').value = msToDtLocal(state.startClock);
+  $('now-clock').value = state.nowClockStr || msToDtLocal(Date.now());
   // le recalage nécessite une position GPS
   const canRecale = !!(state.lastFix && state.lastFix.onRoute);
   $('recale-now').disabled = !canRecale;
@@ -972,12 +979,36 @@ function parseHHMM(v) {
   if (!m) return null;
   return (parseInt(m[1]) * 3600) + (parseInt(m[2]) * 60);
 }
-function clockToMs(v) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
-  if (!m) return Date.now();
-  const d = new Date();
-  d.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0);
-  return d.getTime();
+
+/** ms → valeur d'un <input datetime-local> local ("YYYY-MM-DDTHH:MM"). */
+function msToDtLocal(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Chaîne horaire → ms. Gère le nouveau format datetime-local ("YYYY-MM-DDTHH:MM")
+ * et l'ancien format heure seule ("HH:MM", rattaché au jour du départ pour
+ * rester rétro-compatible avec les sauvegardes existantes).
+ */
+function dtToMs(v) {
+  if (!v) return NaN;
+  v = v.trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).getTime();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+  if (m) {
+    const d = new Date(state.startClock != null ? state.startClock : Date.now());
+    d.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0);
+    return d.getTime();
+  }
+  return NaN;
+}
+
+/** Valeur affichable dans un input datetime-local à partir d'une barrière stockée. */
+function cutoffToDtValue(cutoff) {
+  const ms = dtToMs(cutoff);
+  return isFinite(ms) ? msToDtLocal(ms) : '';
 }
 
 init();
