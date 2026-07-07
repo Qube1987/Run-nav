@@ -26,7 +26,8 @@ const state = {
   profile: null,
   // position live
   watchId: null,
-  lastFix: null,       // { lat, lon, d, index, acc, t }
+  lastFix: null,       // { lat, lon, d, index, acc, t, onRoute }
+  onRoute: null,       // null=inconnu, true/false selon l'éloignement à la trace
   hint: 0,
   follow: true,
   // vitesse
@@ -72,7 +73,7 @@ function init() {
     $('pf-follow').classList.toggle('active', state.follow);
     if (state.follow && state.lastFix) {
       recenter();
-      if (state.profile.isZoomed()) state.profile.centerOn(state.lastFix.d);
+      if (state.lastFix.onRoute && state.profile.isZoomed()) state.profile.centerOn(state.lastFix.d);
     }
   });
 
@@ -309,6 +310,7 @@ function toggleTracking() {
   if (!('geolocation' in navigator)) { toast('Géolocalisation non disponible.'); return; }
 
   state.startedAt = Date.now();
+  state.onRoute = null; // réévalué au premier point
   // si aucune heure de départ n'a été fixée, on part de maintenant
   if (state.startClock == null) { state.startClock = state.startedAt; $('start-clock').value = fmtClock(state.startClock); }
   recomputePacing();
@@ -326,6 +328,8 @@ function toggleTracking() {
 function stopTracking() {
   if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
   state.watchId = null;
+  state.onRoute = null;
+  $('offroute-banner').hidden = true;
   const btn = $('act-start');
   btn.classList.remove('tracking');
   btn.querySelector('.act-ico').textContent = '▶';
@@ -337,38 +341,68 @@ function onGeoError(err) {
   toast(err.code === 1 ? 'Accès à la position refusé.' : 'Signal GPS indisponible.');
 }
 
+// Seuils hors-parcours (m), avec hystérésis pour éviter le clignotement.
+const OFF_ROUTE_ENTER = 250;
+const OFF_ROUTE_EXIT = 150;
+
 function onPosition(pos) {
   const { latitude: lat, longitude: lon, accuracy, heading, speed } = pos.coords;
   const now = pos.timestamp || Date.now();
 
   const proj = projectOnTrack({ lat, lon }, state.track.points, state.hint);
-  state.hint = proj.index;
   const projected = pointAtDistance(state.track.points, proj.along);
+  const gpsSpeed = (speed != null && isFinite(speed) && speed >= 0 && speed <= MAX_PLAUSIBLE_MS) ? speed : null;
 
-  state.lastFix = { lat, lon, d: proj.along, index: proj.index, acc: accuracy, off: proj.dist, t: now };
+  // état on/off parcours (hystérésis)
+  if (state.onRoute == null) state.onRoute = proj.dist <= OFF_ROUTE_ENTER;
+  else if (state.onRoute && proj.dist > OFF_ROUTE_ENTER) state.onRoute = false;
+  else if (!state.onRoute && proj.dist < OFF_ROUTE_EXIT) state.onRoute = true;
 
-  // vitesse : préfère la vitesse GPS si dispo, sinon dérive de la distance parcourue
-  if (speed != null && isFinite(speed) && speed >= 0 && speed <= MAX_PLAUSIBLE_MS) {
-    state.liveSpeed = speed;
-  } else {
-    updateLiveSpeedFromTrack(proj.along, now);
-  }
-
-  // carte
+  // position réelle sur la carte (toujours, même hors parcours)
   if (state.map) {
     state.map.setPosition(lat, lon, accuracy, heading);
-    state.map.setProgress(proj.index, projected);
-    if (state.follow) recenter();
-    state.map.highlightCursor(projected.lat, projected.lon);
+    if (state.follow) state.map.panTo(lat, lon);
+  }
+  if (gpsSpeed != null) state.liveSpeed = gpsSpeed;
+
+  if (!state.onRoute) {
+    // Hors parcours : on n'invente pas de position sur la trace.
+    state.lastFix = { lat, lon, acc: accuracy, off: proj.dist, t: now, onRoute: false };
+    if (state.map) { state.map.clearCursor(); state.map.setProgress(-1, null); }
+    state.profile.setCursor(null);
+    $('offroute-banner').hidden = false;
+    $('offroute-text').textContent = `Hors parcours · ${fmtDist(proj.dist)} de la trace`;
+    $('climb-banner').hidden = true;
+    updateStatbarOffRoute();
+    return;
   }
 
-  // profil : marqueur de position + recentrage si suivi actif et zoomé
+  // Sur le parcours : suivi normal.
+  $('offroute-banner').hidden = true;
+  state.hint = proj.index;
+  state.lastFix = { lat, lon, d: proj.along, index: proj.index, acc: accuracy, off: proj.dist, t: now, onRoute: true };
+  if (gpsSpeed == null) updateLiveSpeedFromTrack(proj.along, now);
+
+  if (state.map) {
+    state.map.setProgress(proj.index, projected);
+    state.map.highlightCursor(projected.lat, projected.lon);
+  }
   state.profile.setCursor(proj.along);
   if (state.follow && state.profile.isZoomed()) state.profile.centerOn(proj.along);
 
   updateStatbar(proj.along, proj.dist);
   updateClimbBanner(proj.along);
   if (state.paceMode === 'live') recomputePacing();
+}
+
+/** Barre de stats en mode hors parcours : pas de distance/pente trompeuses. */
+function updateStatbarOffRoute() {
+  const t = state.track;
+  $('st-dist').textContent = `– / ${(t.total / 1000).toFixed(1)}`;
+  $('st-climb').textContent = '–';
+  const gEl = $('st-grade'); gEl.textContent = '–'; gEl.style.color = '';
+  $('st-speed').textContent = state.watchId != null ? `${(state.liveSpeed * 3.6).toFixed(1)} km/h` : '–';
+  $('st-eta').textContent = '–';
 }
 
 const MAX_PLAUSIBLE_MS = 30; // 108 km/h : au-delà = glitch GPS, on ignore
@@ -414,14 +448,6 @@ function updateStatbar(d, off) {
 
   // ETA arrivée
   $('st-eta').textContent = etaText();
-
-  // avertissement hors-trace
-  const btn = $('act-start');
-  if (off != null && off > 40 && state.watchId != null) {
-    btn.classList.add('offtrack');
-  } else {
-    btn.classList.remove('offtrack');
-  }
 }
 
 function remainingGain(d) {
@@ -482,7 +508,9 @@ function etaText() {
 /** Recale l'allure depuis la position GPS actuelle et l'heure actuelle. */
 function recalibrateFromNow() {
   if (!state.track) return;
-  if (!state.lastFix || state.lastFix.d < 30) { toast('Position GPS requise — démarre le suivi.'); return; }
+  if (!state.lastFix || !state.lastFix.onRoute || state.lastFix.d < 30) {
+    toast('Rejoins la trace : position GPS hors parcours.'); return;
+  }
   if (state.startClock == null) { toast("Renseigne d'abord l'heure de départ."); return; }
   const elapsed = (currentNowMs() - state.startClock) / 1000;
   if (elapsed < 60) { toast('Heure actuelle incohérente avec le départ.'); return; }
@@ -532,7 +560,7 @@ function setProfileView(view) {
   $('pf-full').classList.toggle('active', view === 'full');
   $('pf-zoom').classList.toggle('active', view === 'climb');
   if (view === 'climb') {
-    const d = state.lastFix ? state.lastFix.d : 0;
+    const d = state.lastFix && state.lastFix.onRoute ? state.lastFix.d : 0;
     const cur = currentClimb(state.climbs, d);
     if (cur) {
       const c = cur.climb;
@@ -554,7 +582,7 @@ function onScrub(d, pt) {
   state.scrubD = d;
   const p = pointAtDistance(state.track.points, d);
   if (state.map) state.map.highlightCursor(p.lat, p.lon);
-  if (!state.lastFix) state.profile.setCursor(d);
+  if (!state.lastFix || !state.lastFix.onRoute) state.profile.setCursor(d);
 }
 
 // ------------------------------------------------------------------ POINTS DE PASSAGE MANUELS
@@ -565,7 +593,7 @@ function onMapTap(latlng) {
 }
 
 function addWaypointAtCursor() {
-  const d = state.lastFix ? state.lastFix.d : (state.scrubD || 0);
+  const d = state.lastFix && state.lastFix.onRoute ? state.lastFix.d : (state.scrubD || 0);
   addWaypoint(d);
 }
 
@@ -803,7 +831,7 @@ function recomputePacing() {
   state.cumTime = buildTimeModel(pts, ref);
 
   renderPaceTable();
-  if (state.lastFix) { updateStatbar(state.lastFix.d, state.lastFix.off); }
+  if (state.lastFix && state.lastFix.onRoute) { updateStatbar(state.lastFix.d, state.lastFix.off); }
   else { $('st-eta').textContent = etaText(); }
 }
 
@@ -822,7 +850,7 @@ function renderPaceTable() {
   const rows = state.waypoints.map((w, i) => ({ d: w.d, label: w.label, summit: w.summit, meta: w, wpi: String(i) }));
   rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false, meta: state.finishMeta, wpi: 'finish' });
 
-  const posD = state.lastFix ? state.lastFix.d : -1;
+  const posD = state.lastFix && state.lastFix.onRoute ? state.lastFix.d : -1;
   let html = '';
   for (const r of rows) {
     const tSec = timeAtDistance(pts, cum, r.d);
@@ -896,7 +924,7 @@ function openSheet(open) {
   $('start-clock').value = fmtClock(state.startClock);
   $('now-clock').value = state.nowClockStr || fmtClock(Date.now());
   // le recalage nécessite une position GPS
-  const canRecale = !!state.lastFix;
+  const canRecale = !!(state.lastFix && state.lastFix.onRoute);
   $('recale-now').disabled = !canRecale;
   $('recale-hint').textContent = canRecale
     ? "Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage."
