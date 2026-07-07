@@ -22,6 +22,7 @@ export class ProfileChart {
     this.track = null;
     this.climbs = [];
     this.waypoints = [];
+    this.finishBarrier = false; // barrière horaire à l'arrivée
     this.cursorD = null;      // distance de la position courante (m)
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
     this.minSpan = 120;       // largeur minimale visible (m)
@@ -40,6 +41,7 @@ export class ProfileChart {
     this.render();
   }
   setWaypoints(wpts) { this.waypoints = wpts; this.render(); }
+  setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
     if (view === 'climb' && range) this.win = [range[0], range[1]];
@@ -204,14 +206,23 @@ export class ProfileChart {
       if (wpt.d < d0 || wpt.d > d1) continue;
       const wp = pointAtDistance(pts, wpt.d);
       const xx = x(wpt.d), yy = y(wp.ele);
-      const col = wpt.color || '#78beff';
-      ctx.strokeStyle = withAlpha(col, 0.5);
-      ctx.setLineDash([3 * this.dpr, 3 * this.dpr]);
+      const isBar = !!wpt.cutoff;                        // barrière horaire
+      const col = wpt.color || (isBar ? '#e0484a' : '#78beff');
+      // ligne verticale : pleine et marquée pour une barrière, pointillée sinon
+      ctx.strokeStyle = withAlpha(col, isBar ? 0.85 : 0.5);
+      ctx.lineWidth = (isBar ? 1.6 : 1) * this.dpr;
+      ctx.setLineDash(isBar ? [] : [3 * this.dpr, 3 * this.dpr]);
       ctx.beginPath(); ctx.moveTo(xx, p.t); ctx.lineTo(xx, h - p.b); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = col;
       ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1 * this.dpr;
-      ctx.beginPath(); ctx.arc(xx, yy, (wpt.icon ? 4.5 : 3.5) * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(xx, yy, (wpt.icon || isBar ? 4.5 : 3.5) * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // ⏱ en haut de la ligne pour signaler une barrière horaire
+      if (isBar) {
+        ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText('⏱', xx, p.t + 1 * this.dpr);
+      }
       // pictogramme au-dessus du point (seulement si personnalisé, pour rester lisible)
       if (wpt.icon) {
         ctx.font = `${14 * this.dpr}px system-ui, sans-serif`;
@@ -223,6 +234,17 @@ export class ProfileChart {
     // --- marqueur départ/arrivée ---
     this._flag(x(pts[0].d), y(pts[0].ele), '#3fbf6f', s);
     this._flag(x(pts[pts.length - 1].d), y(pts[pts.length - 1].ele), '#e8613c', s);
+    // barrière horaire à l'arrivée
+    if (this.finishBarrier) {
+      const fx = x(pts[pts.length - 1].d);
+      ctx.strokeStyle = withAlpha('#e0484a', 0.85); ctx.lineWidth = 1.6 * this.dpr;
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(fx, p.t); ctx.lineTo(fx, h - p.b); ctx.stroke();
+      ctx.fillStyle = '#e0484a';
+      ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('⏱', fx, p.t + 1 * this.dpr);
+    }
 
     // --- curseur position ---
     if (this.cursorD != null && this.cursorD >= d0 - 30 && this.cursorD <= d1 + 30) {
