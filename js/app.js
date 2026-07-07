@@ -971,7 +971,7 @@ async function loadRaces() {
         `${escHtml(r.name || 'Parcours')}` +
         `<span class="race-sub">code ${escHtml(r.code)}${when ? ' · ' + when : ''}</span>` +
         `</button>` +
-        `<button class="race-del" data-del="${escAttr(r.code)}" title="Supprimer">🗑️</button>`;
+        `<button class="race-del" data-del="${escAttr(r.code)}" data-name="${escAttr(r.name || 'Parcours')}" title="Supprimer">🗑️</button>`;
       list.appendChild(li);
     }
   } catch (e) {
@@ -984,13 +984,29 @@ function onRacesClick(e) {
   const open = e.target.closest('[data-code]');
   if (open) { restoreFromCode(open.dataset.code); return; }
   const del = e.target.closest('[data-del]');
-  if (del) { deleteRace(del.dataset.del); }
+  if (del) { deleteRace(del.dataset.del, del.dataset.name || ''); }
 }
 
-async function deleteRace(code) {
-  if (!confirm('Supprimer cette épreuve enregistrée ?')) return;
+async function deleteRace(code, name) {
+  // Sécurité anti-fausse-manip : il faut retaper le nom de l'épreuve (ou, si le
+  // nom est long, ses 6 premiers caractères) pour confirmer la suppression.
+  const full = (name || '').trim();
+  const longName = full.length > 6;
+  const challenge = longName ? full.slice(0, 6) : full;
+  const norm = (s) => (s || '').trim().toLowerCase();
+  const answer = prompt(
+    `Suppression définitive de « ${full || code} ».\n\n` +
+    `Pour confirmer, tape ${longName ? 'les 6 premiers caractères du nom' : 'le nom de l’épreuve'} :\n` +
+    `${challenge}`
+  );
+  if (answer == null) return; // Annuler
+  if (norm(answer) !== norm(challenge) && norm(answer) !== norm(full)) {
+    showAuthError('Suppression annulée : le texte saisi ne correspond pas.');
+    return;
+  }
   try {
     await cloudDeleteRace(code);
+    showAuthError('');
     loadRaces();
   } catch (e) {
     showAuthError('Suppression impossible (réseau ?).');
