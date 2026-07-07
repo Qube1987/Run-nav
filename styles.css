@@ -482,6 +482,15 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: #e0484a; color: #fff; border: 1.5px solid #fff;
   font-size: 9px; line-height: 12px; text-align: center;
 }
+/* repère à plusieurs dispos : chip arrondi listant les icônes */
+.wpt-chip {
+  position: relative; height: 26px; padding: 0 5px;
+  display: flex; align-items: center; justify-content: center; gap: 1px;
+  border-radius: 13px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.wpt-chip > span { font-size: 14px; line-height: 1; }
+.wpt-chip.has-bar { border-color: #ffd24a; box-shadow: 0 0 0 2px rgba(224, 72, 74, 0.55), 0 2px 5px rgba(0, 0, 0, 0.5); }
+.wpt-chip .wpt-bar { transform: none; top: -8px; }
 
 /* Leaflet ajustements thème sombre */
 .leaflet-container { background: #0b0e12; font-family: inherit; }
