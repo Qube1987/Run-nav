@@ -274,7 +274,8 @@ function startApp(track) {
       $('pf-full').classList.remove('active');
       $('pf-zoom').classList.remove('active');
     };
-    state.profile.onWaypointTap = (wp) => showWaypointInfo(wp, wp.d);
+    state.profile.onWaypointTap = (wp) => { highlightAt(wp.d); showWaypointInfo(wp, wp.d); };
+    state.profile.onPointSelect = (d) => { highlightAt(d); showPointInfo(d); };
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
@@ -844,6 +845,18 @@ function setPaceMode(mode) {
 }
 
 // ------------------------------------------------------------------ FICHE POINT
+/** Surligne un point (par distance) sur la carte. */
+function highlightAt(d) {
+  if (!state.map) return;
+  const p = pointAtDistance(state.track.points, d);
+  state.map.highlightCursor(p.lat, p.lon);
+}
+
+/** Fiche d'un point quelconque de la courbe (sans nom/notes/barrière). */
+function showPointInfo(d) {
+  showWaypointInfo({ label: `Point · ${(d / 1000).toFixed(1)} km`, info: '', cutoff: null, summit: false, _pt: true }, d);
+}
+
 /** Affiche la fiche d'un point de passage (depuis la carte ou le profil). */
 function showWaypointInfo(meta, d) {
   if (!state.track || !state.cumTime) return;
@@ -867,7 +880,8 @@ function showWaypointInfo(meta, d) {
       : `${(toPointM / 1000).toFixed(1)} km · dans ${fmtDuration(toGoSec)}`]);
   }
   rows.push(['Jusqu’à l’arrivée', `${(toFinishM / 1000).toFixed(1)} km`]);
-  rows.push(['Altitude', `${Math.round(here.ele)} m`]);
+  const g = gradeAt(d);
+  rows.push(['Altitude · pente', `${Math.round(here.ele)} m · ${g >= 0 ? '+' : ''}${g.toFixed(1)} %`]);
   rows.push(['Temps de course', fmtDuration(tSec)]);
   rows.push(['Arrivée estimée', fmtClockRel(predMs)]);
 
@@ -889,9 +903,10 @@ function showWaypointInfo(meta, d) {
   const notesHtml = notes
     ? `<div class="wi-notes"><span class="wi-k">Notes</span>${escapeHtml(notes)}</div>` : '';
 
+  const sub = meta.summit ? '⛰️ Sommet' : (meta._pt ? 'point du parcours' : 'point de passage');
   $('wi-body').innerHTML = `
-    <h3 class="wi-title">${escapeHtml(meta.label || 'Point de passage')}</h3>
-    <p class="wi-sub">${meta.summit ? '⛰️ Sommet · ' : ''}point de passage</p>
+    <h3 class="wi-title">${escapeHtml(meta.label || 'Point')}</h3>
+    <p class="wi-sub">${sub}</p>
     <div class="wi-rows">${rowsHtml}${cutoffRow}</div>
     ${notesHtml}`;
   $('wpt-info').hidden = false;
