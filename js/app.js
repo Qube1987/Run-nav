@@ -23,7 +23,7 @@ import {
 const $ = (id) => document.getElementById(id);
 
 // Pictogrammes & couleurs assignables à un point de passage.
-const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
+const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
 
 /** Icônes sélectionnées d'un repère (tableau). Rétro-compat avec l'ancien champ `icon`. */
 function metaIcons(m) {
