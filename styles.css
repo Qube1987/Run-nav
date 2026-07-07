@@ -290,8 +290,16 @@ body { overflow: hidden; }
 .pace-card.passed { opacity: 0.55; }
 .pace-card.summit { border-color: rgba(232, 97, 60, 0.35); }
 .pace-card.danger { border-color: #e0484a; background: rgba(224, 72, 74, 0.10); }
-.pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.pc-label { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-head { display: flex; align-items: center; gap: 6px; }
+.pc-ico { flex: none; font-size: 15px; }
+.pace-card input.pr-name {
+  flex: 1; min-width: 0; width: auto; background: transparent; border: none;
+  border-bottom: 1px dashed transparent; border-radius: 0;
+  color: var(--text); font-weight: 700; font-size: 15px; font-family: inherit;
+  padding: 2px 2px;
+}
+.pace-card input.pr-name:hover { border-bottom-color: var(--line); }
+.pace-card input.pr-name:focus { outline: none; border-bottom-color: var(--accent-2); }
 .pc-km { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
 
 .pc-field { display: flex; flex-direction: column; gap: 4px; }
