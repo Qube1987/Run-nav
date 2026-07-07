@@ -109,15 +109,12 @@ export class RaceMap {
       html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
       size = [28, 28]; anchor = [14, 28];
     } else {
-      // plusieurs dispos → icônes superposées (empilées) sur un même repère.
-      // Positionnement absolu : chaque icône est centrée sur un point espacé de
-      // STEP px ; comme le glyphe (~18px) est plus large que STEP, elles se
-      // chevauchent fortement, quelle que soit la police emoji du système.
-      const STEP = 6;
-      const w = (list.length - 1) * STEP + 26;
-      const inner = list.map((i, k) => `<span style="left:${13 + k * STEP}px;z-index:${k}">${i}</span>`).join('');
-      html = `<div class="wpt-chip${isBar ? ' has-bar' : ''}" style="background:${color};width:${w}px">${inner}${badge}</div>`;
-      size = [w, 26]; anchor = [w / 2, 26];
+      // plusieurs dispos → icônes EN COLONNE (l'une au-dessus de l'autre),
+      // chacune distincte, sans chevauchement. Le repère grandit vers le haut.
+      const inner = list.map((i) => `<span>${i}</span>`).join('');
+      const w = 26, h = list.length * 18 + 6;
+      html = `<div class="wpt-col${isBar ? ' has-bar' : ''}" style="background:${color}">${inner}${badge}</div>`;
+      size = [w, h]; anchor = [w / 2, h];
     }
     const m = L.marker([wpt.lat, wpt.lon], {
       icon: L.divIcon({ className: 'wpt-icon', html, iconSize: size, iconAnchor: anchor }),
