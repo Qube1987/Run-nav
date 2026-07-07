@@ -852,16 +852,16 @@ function showWaypointInfo(meta, d) {
   const passed = onRouteNow && curD >= d - 20;
 
   const rows = [];
-  rows.push(['Distance', `${(d / 1000).toFixed(1)} km · ${Math.round(here.ele)} m`]);
-  rows.push(['Temps de course', fmtDuration(tSec)]);
-  rows.push(['Arrivée estimée', fmtClockRel(predMs)]);
-  if (passed) {
-    rows.push(['Statut', '✓ déjà passé']);
-  } else {
-    rows.push([onRouteNow ? 'Restant jusqu’ici' : 'Depuis le départ',
-      `${(toPointM / 1000).toFixed(1)} km · ${onRouteNow ? 'dans ' + fmtDuration(toGoSec) : fmtDuration(tSec)}`]);
+  rows.push(['Distance / départ', `${(d / 1000).toFixed(1)} km`]);
+  if (onRouteNow) {
+    rows.push(['Distance / ma position', passed
+      ? '✓ déjà passé'
+      : `${(toPointM / 1000).toFixed(1)} km · dans ${fmtDuration(toGoSec)}`]);
   }
   rows.push(['Jusqu’à l’arrivée', `${(toFinishM / 1000).toFixed(1)} km`]);
+  rows.push(['Altitude', `${Math.round(here.ele)} m`]);
+  rows.push(['Temps de course', fmtDuration(tSec)]);
+  rows.push(['Arrivée estimée', fmtClockRel(predMs)]);
 
   // barrière horaire
   let cutoffRow = '';
