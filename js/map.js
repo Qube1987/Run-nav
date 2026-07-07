@@ -149,9 +149,10 @@ export class RaceMap {
     this.mediaLayer.clearLayers();
     for (const md of (list || [])) {
       if (md.lat == null || md.lon == null) continue;
+      const safeUrl = String(md.url).replace(/["'()\\]/g, '');
       const inner = md.kind === 'video'
         ? `<div class="mm-thumb mm-video"><span>▶</span></div>`
-        : `<div class="mm-thumb"><img src="${md.url}" alt="" loading="lazy"></div>`;
+        : `<div class="mm-thumb" style="background-image:url('${safeUrl}')"></div>`;
       const html = `<div class="media-thumb-marker">${inner}<span class="mm-tail"></span></div>`;
       const mk = L.marker([md.lat, md.lon], {
         icon: L.divIcon({ className: 'media-icon', html, iconSize: [46, 54], iconAnchor: [23, 54] }),
