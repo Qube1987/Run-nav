@@ -207,6 +207,7 @@ export class ProfileChart {
       const wp = pointAtDistance(pts, wpt.d);
       const xx = x(wpt.d), yy = y(wp.ele);
       const isBar = !!wpt.cutoff;                        // barrière horaire
+      const icons = Array.isArray(wpt.icons) ? wpt.icons : (wpt.icon ? [wpt.icon] : []);
       const col = wpt.color || (isBar ? '#e0484a' : '#78beff');
       // ligne verticale : pleine et marquée pour une barrière, pointillée sinon
       ctx.strokeStyle = withAlpha(col, isBar ? 0.85 : 0.5);
@@ -216,18 +217,20 @@ export class ProfileChart {
       ctx.setLineDash([]);
       ctx.fillStyle = col;
       ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1 * this.dpr;
-      ctx.beginPath(); ctx.arc(xx, yy, (wpt.icon || isBar ? 4.5 : 3.5) * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(xx, yy, (icons.length || isBar ? 4.5 : 3.5) * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       // ⏱ en haut de la ligne pour signaler une barrière horaire
       if (isBar) {
         ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText('⏱', xx, p.t + 1 * this.dpr);
       }
-      // pictogramme au-dessus du point (seulement si personnalisé, pour rester lisible)
-      if (wpt.icon) {
-        ctx.font = `${14 * this.dpr}px system-ui, sans-serif`;
+      // pictogramme(s) au-dessus du point (alignés en rangée si plusieurs dispos)
+      if (icons.length) {
+        ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(wpt.icon, xx, yy - 6 * this.dpr);
+        const iw = 14 * this.dpr;
+        const startX = xx - (icons.length - 1) * iw / 2;
+        icons.slice(0, 4).forEach((ic, k) => ctx.fillText(ic, startX + k * iw, yy - 6 * this.dpr));
       }
     }
 
