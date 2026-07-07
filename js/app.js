@@ -35,7 +35,8 @@ const state = {
   // pacing
   paceMode: 'live',    // live | manual | target
   activity: 'run',     // run | bike — modèle de pente
-  manualKmh: 12,
+  manualKmh: 10,
+  speedCustomized: false, // true dès que l'utilisateur fixe une vitesse
   targetSec: 4.5 * 3600,
   startClock: null,    // ms — heure de départ (planifiée ou réelle)
   nowClockStr: null,   // "HH:MM" saisi manuellement, sinon null = heure du téléphone
@@ -76,7 +77,8 @@ function init() {
   document.querySelectorAll('[data-pacemode]').forEach((b) =>
     b.addEventListener('click', () => setPaceMode(b.dataset.pacemode)));
   $('manual-speed').addEventListener('input', (e) => {
-    state.manualKmh = parseFloat(e.target.value) || 12; recomputePacing(); autosave();
+    state.manualKmh = parseFloat(e.target.value) || 10; state.speedCustomized = true;
+    recomputePacing(); autosave();
   });
   $('target-time').addEventListener('input', (e) => {
     const s = parseHHMM(e.target.value); if (s) { state.targetSec = s; recomputePacing(); autosave(); }
@@ -121,7 +123,52 @@ function init() {
     if (state.profile) state.profile.resize();
     if (state.map) state.map.invalidate();
   });
+
+  // type d'effort par défaut (dernier choisi), reflété sur l'accueil
+  state.activity = localGet('activity') || 'run';
+  setActivityType(state.activity);
+  if (!state.speedCustomized) state.manualKmh = DEFAULT_KMH[state.activity];
+  document.querySelectorAll('[data-activity]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.activity === state.activity));
+
+  setupPWA();
 }
+
+// ------------------------------------------------------------------ PWA / HORS-LIGNE
+let deferredInstall = null;
+function setupPWA() {
+  // service worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* pas bloquant */ });
+    });
+  }
+  // invite d'installation (Android/Chrome)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    $('install-btn').hidden = false;
+  });
+  $('install-btn').addEventListener('click', async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    await deferredInstall.userChoice;
+    deferredInstall = null;
+    $('install-btn').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('install-btn').hidden = true; });
+
+  // iOS (pas d'invite native) : instructions, sauf si déjà installé
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (isIOS && !standalone) $('ios-install').hidden = false;
+
+  // indicateur hors-ligne
+  window.addEventListener('offline', () => toastSafe('📴 Hors ligne — la carte et l’appli restent dispo (zones déjà vues).'));
+}
+
+// toast utilisable avant qu'un parcours soit chargé
+function toastSafe(msg) { try { toast(msg); } catch (_) { /* ignore */ } }
 
 // ------------------------------------------------------------------ CHARGEMENT GPX
 function onFilePicked(e) {
@@ -157,10 +204,11 @@ function startApp(track) {
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
 
-  // persistance : clé du parcours + restauration des réglages sauvegardés
+  // persistance : clé du parcours + restauration des réglages sauvegardés.
+  // On conserve le type d'activité choisi (accueil / dernier défaut) ; une config
+  // sauvegardée pour ce parcours peut le surcharger.
   state.gpxKey = hashTrack(track);
   state.finishMeta = { info: '', cutoff: null };
-  state.activity = 'run';
   const saved = localLoad(state.gpxKey);
   if (saved) applyConfig(saved);
   setActivityType(state.activity);
@@ -436,6 +484,7 @@ function recalibrateFromNow() {
   if (!ref || !isFinite(ref) || ref <= 0) { toast('Recalage impossible.'); return; }
   const avgKmh = avgSpeedFor(state.track.points, ref);
   state.manualKmh = avgKmh;
+  state.speedCustomized = true;
   $('manual-speed').value = avgKmh.toFixed(1);
   setPaceMode('manual'); // applique et rafraîchit toute la table
   toast(`Recalé : ${avgKmh.toFixed(1)} km/h de moyenne réelle · ${(state.lastFix.d / 1000).toFixed(1)} km parcourus.`);
@@ -528,9 +577,17 @@ function addWaypoint(d) {
 }
 
 // ------------------------------------------------------------------ TYPE D'EFFORT
+const DEFAULT_KMH = { run: 10, bike: 20 };
+
 function setActivity(act) {
   state.activity = act === 'bike' ? 'bike' : 'run';
   setActivityType(state.activity);
+  localSet('activity', state.activity); // défaut global mémorisé
+  // vitesse par défaut réaliste selon l'activité, tant que l'utilisateur n'en a pas fixé
+  if (!state.speedCustomized) {
+    state.manualKmh = DEFAULT_KMH[state.activity];
+    if ($('manual-speed')) $('manual-speed').value = state.manualKmh;
+  }
   document.querySelectorAll('[data-activity]').forEach((b) =>
     b.classList.toggle('active', b.dataset.activity === state.activity));
   recomputePacing();
@@ -558,7 +615,7 @@ function applyConfig(cfg) {
   if (!cfg) return;
   if (cfg.activity) { state.activity = cfg.activity; setActivityType(state.activity); }
   if (cfg.paceMode) state.paceMode = cfg.paceMode;
-  if (typeof cfg.manualKmh === 'number') state.manualKmh = cfg.manualKmh;
+  if (typeof cfg.manualKmh === 'number') { state.manualKmh = cfg.manualKmh; state.speedCustomized = true; }
   if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
   if (cfg.startStr) state.startClock = clockToMs(cfg.startStr);
   if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null };
@@ -773,6 +830,7 @@ function editWaypointTime(d, hhmm) {
 
   const avgKmh = avgSpeedFor(state.track.points, ref);
   state.manualKmh = avgKmh;                       // précision complète => temps exact
+  state.speedCustomized = true;
   $('manual-speed').value = avgKmh.toFixed(1);    // affichage arrondi
   setPaceMode('manual'); // recalcule tout et affiche la table à jour
   toast(`Allure calée : ${avgKmh.toFixed(1)} km/h moy. pour passer à ${hhmm}.`);

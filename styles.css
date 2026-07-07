@@ -60,6 +60,17 @@ body { overflow: hidden; }
 }
 .ghost-btn:active { background: var(--panel); }
 
+.activity-pick { margin: 0 0 18px; text-align: left; }
+.activity-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
+.activity-pick .seg { display: flex; gap: 6px; background: var(--panel-2); padding: 4px; border-radius: 11px; }
+.activity-pick .seg-btn {
+  flex: 1; background: transparent; border: none; color: var(--muted);
+  padding: 11px 6px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.activity-pick .seg-btn.active { background: var(--accent); color: #fff; }
+.ios-install { margin-top: 12px; text-align: center; }
+.ios-install b { color: var(--text); }
+
 .welcome-error {
   margin-top: 14px; color: #ff8a7a; font-size: 14px;
   background: rgba(255, 90, 60, 0.1); padding: 10px 12px; border-radius: 10px;
