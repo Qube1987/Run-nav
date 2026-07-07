@@ -28,6 +28,22 @@
       <p class="tagline">Suivi live de tes trails &amp; épreuves vélo.<br>
         Charge ta trace GPX, vois où tu en es dans chaque côte.</p>
 
+      <!-- Suivre un athlète en live (entrée mise en avant) -->
+      <div class="follow-cta">
+        <button id="follow-btn" class="follow-hero" type="button">
+          <span class="fh-ico">👀</span>
+          <span class="fh-txt"><b>Suivre un athlète en live</b><small>Sa position, ses photos, encourage-le</small></span>
+        </button>
+        <div id="follow-box" class="follow-box" hidden>
+          <input id="follow-code" type="text" inputmode="text" autocapitalize="characters"
+                 maxlength="8" placeholder="Code de l'athlète" />
+          <input id="follow-name" type="text" maxlength="24" placeholder="Ton prénom / pseudo" />
+          <button id="follow-go" type="button">👀 Suivre en live</button>
+        </div>
+      </div>
+
+      <div class="welcome-sep"><span>ou lance ta propre course</span></div>
+
       <div class="activity-pick">
         <span class="activity-label">Type d'activité</span>
         <div class="seg">
@@ -74,16 +90,6 @@
           <p id="races-empty" class="hint races-empty" hidden>Aucune épreuve enregistrée. Charge un GPX, règle-le puis « Sauvegarder dans le cloud ».</p>
         </div>
         <p id="auth-error" class="welcome-error" hidden></p>
-      </div>
-
-      <div class="follow-cta">
-        <button id="follow-btn" class="ghost-btn" type="button">👀 Suivre un athlète en live</button>
-        <div id="follow-box" class="follow-box" hidden>
-          <input id="follow-code" type="text" inputmode="text" autocapitalize="characters"
-                 maxlength="8" placeholder="Code de l'athlète" />
-          <input id="follow-name" type="text" maxlength="24" placeholder="Ton prénom / pseudo" />
-          <button id="follow-go" type="button">👀 Suivre en live</button>
-        </div>
       </div>
 
       <details class="welcome-restore-wrap">
