@@ -228,7 +228,7 @@ export class ProfileChart {
       if (icons.length) {
         ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        const step = 6 * this.dpr;             // faible pas → icônes qui se chevauchent
+        const step = 5 * this.dpr;             // faible pas → icônes qui se chevauchent
         const list = icons.slice(0, 4);
         const startX = xx - (list.length - 1) * step / 2;
         list.forEach((ic, k) => ctx.fillText(ic, startX + k * step, yy - 6 * this.dpr));

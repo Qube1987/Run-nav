@@ -110,7 +110,8 @@ export class RaceMap {
       size = [28, 28]; anchor = [14, 28];
     } else {
       // plusieurs dispos → icônes superposées (empilées) sur un même repère
-      const w = 26 + (list.length - 1) * 10;
+      // largeur = padding + fentes de 10px (voir .wpt-chip dans styles.css)
+      const w = 16 + list.length * 10;
       const inner = list.map((i) => `<span>${i}</span>`).join('');
       html = `<div class="wpt-chip${isBar ? ' has-bar' : ''}" style="background:${color}">${inner}${badge}</div>`;
       size = [w, 26]; anchor = [w / 2, 26];

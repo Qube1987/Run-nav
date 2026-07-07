@@ -482,19 +482,21 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: #e0484a; color: #fff; border: 1.5px solid #fff;
   font-size: 9px; line-height: 12px; text-align: center;
 }
-/* repère à plusieurs dispos : icônes superposées (empilées) sur un même repère */
+/* repère à plusieurs dispos : icônes superposées (empilées) sur un même repère.
+   Chaque icône occupe une fente étroite fixe (10px) mais déborde visuellement →
+   chevauchement garanti quelle que soit la largeur réelle du glyphe emoji. */
 .wpt-chip {
-  position: relative; height: 26px; padding: 0 4px;
+  position: relative; height: 26px; padding: 0 3px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 13px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 .wpt-chip > span {
-  font-size: 15px; line-height: 1; margin-left: -9px;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.55);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 10px; font-size: 14px; line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
 }
-.wpt-chip > span:first-child { margin-left: 0; }
 .wpt-chip.has-bar { border-color: #ffd24a; box-shadow: 0 0 0 2px rgba(224, 72, 74, 0.55), 0 2px 5px rgba(0, 0, 0, 0.5); }
-.wpt-chip .wpt-bar { transform: none; top: -8px; }
+.wpt-chip .wpt-bar { transform: none; top: -8px; right: -6px; }
 
 /* Leaflet ajustements thème sombre */
 .leaflet-container { background: #0b0e12; font-family: inherit; }
