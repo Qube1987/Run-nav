@@ -99,8 +99,11 @@ export class RaceMap {
   }
 
   addWaypointMarker(wpt) {
+    const ico = wpt.icon || (wpt.summit ? '⛰️' : '📍');
+    const color = wpt.color || '#ff5a3c';
+    const html = `<div class="wpt-pin" style="background:${color}"><span>${ico}</span></div>`;
     const m = L.marker([wpt.lat, wpt.lon], {
-      icon: L.divIcon({ className: 'wpt-icon', html: '📌', iconSize: [24, 24], iconAnchor: [6, 22] }),
+      icon: L.divIcon({ className: 'wpt-icon', html, iconSize: [28, 28], iconAnchor: [14, 28] }),
     }).addTo(this.wptLayer);
     if (wpt.label) m.bindTooltip(wpt.label, { direction: 'top' });
     m.on('click', () => { if (this.onWaypointClick) this.onWaypointClick(wpt); });

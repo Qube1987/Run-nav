@@ -18,6 +18,10 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Pictogrammes & couleurs assignables à un point de passage.
+const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
+const WPT_COLORS = ['#ff5a3c', '#f0a63a', '#ffd24a', '#3fbf6f', '#4aa3ff', '#b06fff', '#ffffff'];
+
 const state = {
   track: null,
   climbs: [],
@@ -47,7 +51,7 @@ const state = {
   // persistance
   gpxKey: null,
   cloudCode: null,
-  finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée' },
+  finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée', icon: '🏁', color: '' },
   _saveT: null,
 };
 
@@ -123,6 +127,12 @@ function init() {
   $('pace-table').addEventListener('input', (e) => {
     const info = e.target.closest('.pr-info');
     if (info) { setWaypointInfo(info.dataset.wpi, info.value); }
+  });
+  $('pace-table').addEventListener('click', (e) => {
+    const ico = e.target.closest('.pr-icon');
+    if (ico) { setWaypointIcon(ico.dataset.wpi, ico.dataset.icon); return; }
+    const col = e.target.closest('.pr-color');
+    if (col) { setWaypointColor(col.dataset.wpi, col.dataset.color); return; }
   });
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
@@ -230,7 +240,7 @@ function startApp(track) {
   // On conserve le type d'activité choisi (accueil / dernier défaut) ; une config
   // sauvegardée pour ce parcours peut le surcharger.
   state.gpxKey = hashTrack(track);
-  state.finishMeta = { info: '', cutoff: null, label: '🏁 Arrivée' };
+  state.finishMeta = { info: '', cutoff: null, label: '🏁 Arrivée', icon: '🏁', color: '' };
   const saved = localLoad(state.gpxKey);
   if (saved) applyConfig(saved);
   setActivityType(state.activity);
@@ -325,7 +335,7 @@ function renderWaypointMarkers() {
   if (state.map) {
     state.map.clearWaypoints();
     for (const w of state.waypoints) {
-      if (!w.auto || w.summit) state.map.addWaypointMarker(w);
+      if (!w.auto || w.summit || w.icon || w.color) state.map.addWaypointMarker(w);
     }
   }
   state.profile.setWaypoints(state.waypoints);
@@ -663,9 +673,10 @@ function buildConfig() {
     paceMode: state.paceMode,
     manualKmh: state.manualKmh,
     targetSec: state.targetSec,
-    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null, label: state.finishMeta.label || '🏁 Arrivée' },
+    finishMeta: { info: state.finishMeta.info || '', cutoff: state.finishMeta.cutoff || null, label: state.finishMeta.label || '🏁 Arrivée', icon: state.finishMeta.icon || '🏁', color: state.finishMeta.color || '' },
     waypoints: state.waypoints.map((w) => ({
       d: w.d, label: w.label, info: w.info || '', cutoff: w.cutoff || null,
+      icon: w.icon || '', color: w.color || '',
       auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
     })),
   };
@@ -678,13 +689,13 @@ function applyConfig(cfg) {
   if (typeof cfg.manualKmh === 'number') { state.manualKmh = cfg.manualKmh; state.speedCustomized = true; }
   if (typeof cfg.targetSec === 'number') state.targetSec = cfg.targetSec;
   if (cfg.startStr) { const ms = dtToMs(cfg.startStr); if (isFinite(ms)) state.startClock = ms; }
-  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null, label: cfg.finishMeta.label || '🏁 Arrivée' };
+  if (cfg.finishMeta) state.finishMeta = { info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null, label: cfg.finishMeta.label || '🏁 Arrivée', icon: cfg.finishMeta.icon || '🏁', color: cfg.finishMeta.color || '' };
   if (Array.isArray(cfg.waypoints) && cfg.waypoints.length) {
     state.waypoints = cfg.waypoints.map((w) => {
       const pt = pointAtDistance(state.track.points, w.d);
       return {
         d: w.d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: w.label,
-        info: w.info || '', cutoff: w.cutoff || null,
+        info: w.info || '', cutoff: w.cutoff || null, icon: w.icon || '', color: w.color || '',
         auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
       };
     });
@@ -832,6 +843,16 @@ function setWaypointInfo(wpi, val) {
   m.info = val;
   autosave(); // pas de re-render (ne pas casser la saisie)
 }
+function setWaypointIcon(wpi, icon) {
+  const m = getWpMeta(wpi); if (!m) return;
+  m.icon = (m.icon === icon) ? '' : icon; // re-tap = désélectionne
+  renderWaypointMarkers(); renderPaceTable(); autosave();
+}
+function setWaypointColor(wpi, color) {
+  const m = getWpMeta(wpi); if (!m) return;
+  m.color = (m.color === color) ? '' : color;
+  renderWaypointMarkers(); renderPaceTable(); autosave();
+}
 
 // ------------------------------------------------------------------ ALLURE / TEMPS DE PASSAGE
 function setPaceMode(mode) {
@@ -904,8 +925,9 @@ function showWaypointInfo(meta, d) {
     ? `<div class="wi-notes"><span class="wi-k">Notes</span>${escapeHtml(notes)}</div>` : '';
 
   const sub = meta.summit ? '⛰️ Sommet' : (meta._pt ? 'point du parcours' : 'point de passage');
+  const titleIco = meta.icon ? meta.icon + ' ' : '';
   $('wi-body').innerHTML = `
-    <h3 class="wi-title">${escapeHtml(meta.label || 'Point')}</h3>
+    <h3 class="wi-title"${meta.color ? ` style="color:${meta.color}"` : ''}>${titleIco}${escapeHtml(meta.label || 'Point')}</h3>
     <p class="wi-sub">${sub}</p>
     <div class="wi-rows">${rowsHtml}${cutoffRow}</div>
     ${notesHtml}`;
@@ -979,11 +1001,19 @@ function renderPaceTable() {
       : (toGoSec > 0 ? `⏱ dans ${fmtDuration(toGoSec)}` : '⏱ imminent');
 
     const name = r.meta.label || r.label;
-    html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}">
+    const headIco = r.meta.icon || (r.summit ? '⛰️' : '');
+    const dotColor = r.meta.color || '';
+    html += `<div class="pace-card${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}${danger ? ' danger' : ''}"${dotColor ? ` style="border-left:4px solid ${dotColor}"` : ''}>
       <div class="pc-head">
-        ${r.summit ? '<span class="pc-ico">⛰️</span>' : ''}
+        ${headIco ? `<span class="pc-ico">${headIco}</span>` : ''}
         <input class="pr-name" type="text" value="${escapeHtml(name)}" data-wpi="${r.wpi}" aria-label="Nom du point" spellcheck="false">
         <span class="pc-km">${(r.d / 1000).toFixed(1)} km · ${fmtDuration(tSec)}</span>
+      </div>
+      <div class="pc-deco">
+        <div class="pc-icons">${WPT_ICONS.map((ic) =>
+          `<button class="pr-icon${r.meta.icon === ic ? ' sel' : ''}" data-wpi="${r.wpi}" data-icon="${ic}" type="button">${ic}</button>`).join('')}</div>
+        <div class="pc-colors">${WPT_COLORS.map((co) =>
+          `<button class="pr-color${r.meta.color === co ? ' sel' : ''}" data-wpi="${r.wpi}" data-color="${co}" style="background:${co}" type="button" aria-label="couleur"></button>`).join('')}</div>
       </div>
       <label class="pc-field">
         <span class="pc-flabel">Arrivée estimée ✎ <em class="pc-togo">${toGo}</em></span>
