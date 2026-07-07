@@ -35,10 +35,16 @@ export class RaceMap {
     this.accCircle = null;
     this.wptLayer = L.layerGroup().addTo(this.map);
     this.onMapTap = null;
+    this.onUserPan = null;
 
     this.map.on('click', (e) => {
       if (this.onMapTap) this.onMapTap(e.latlng);
     });
+
+    // Déplacement manuel de la carte → coupe le recentrage automatique
+    // (exploration libre). 'dragstart' n'est déclenché que par l'utilisateur,
+    // jamais par nos panTo/fitBounds programmatiques.
+    this.map.on('dragstart', () => { if (this.onUserPan) this.onUserPan(); });
   }
 
   setTrack(points) {

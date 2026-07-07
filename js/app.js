@@ -248,6 +248,13 @@ function startApp(track) {
       state.map.onMapTap = (latlng) => onMapTap(latlng);
       state.map.onWaypointClick = (wp) => showWaypointInfo(wp, wp.d);
       state.map.onFinishClick = () => showWaypointInfo(state.finishMeta, state.track.total);
+      // déplacement manuel de la carte → coupe le recentrage automatique
+      state.map.onUserPan = () => {
+        if (!state.follow) return;
+        state.follow = false;
+        $('pf-follow').classList.remove('active');
+        if (!state.panHintShown) { state.panHintShown = true; toast('Recentrage auto coupé — appuie sur 📍 Suivi pour y revenir.'); }
+      };
     }
     state.map.clearWaypoints();
     state.map.setTrack(track.points);
@@ -281,6 +288,7 @@ function startApp(track) {
   $('field-target').hidden = state.paceMode !== 'target';
   $('manual-speed').value = state.manualKmh.toFixed(1);
   $('cloud-code').textContent = state.cloudCode || '—';
+  $('pf-follow').classList.toggle('active', state.follow);
 
   renderWaypointMarkers();
   recomputePacing();
