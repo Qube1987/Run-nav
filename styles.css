@@ -395,6 +395,12 @@ body { overflow: hidden; }
 }
 .pr-del:hover { opacity: 1; }
 .pr-del:active { background: rgba(255, 90, 60, 0.15); }
+.pr-del.armed {
+  opacity: 1; background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 700; padding: 5px 10px; white-space: nowrap;
+  animation: pr-del-pulse 1s ease-in-out infinite;
+}
+@keyframes pr-del-pulse { 50% { background: #ff7a4a; } }
 
 .pace-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
 .tool-btn {
@@ -532,6 +538,25 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- barre d'annulation (suppression de point) --- */
+.undo-bar {
+  position: fixed; left: 50%; bottom: calc(18px + var(--safe-bottom));
+  transform: translateX(-50%) translateY(12px);
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(10, 13, 18, 0.97); border: 1px solid var(--line);
+  color: var(--text); padding: 10px 12px 10px 16px; border-radius: 12px;
+  font-size: 14px; max-width: 92%; z-index: 3100;
+  opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+}
+.undo-bar.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.undo-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#undo-btn {
+  flex: none; background: var(--blue); color: #fff; border: none;
+  border-radius: 9px; padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+#undo-btn:active { transform: scale(0.97); }
 
 /* ============================= GRAND ÉCRAN ============================= */
 @media (min-width: 900px) {

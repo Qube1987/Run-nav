@@ -149,9 +149,10 @@ function init() {
     const add = e.target.closest('.pr-addcut');
     if (add) { revealCutoff(add); return; }
     const del = e.target.closest('.pr-del');
-    if (del) { deleteWaypoint(del.dataset.wpi); return; }
+    if (del) { armOrDeleteWaypoint(del); return; }
   });
   $('hide-km').addEventListener('click', hideKmWaypoints);
+  $('undo-btn').addEventListener('click', runUndo);
   // édition d'un temps de passage cible sur une ligne de la table
   $('pace-table').addEventListener('change', (e) => {
     const inp = e.target.closest('.pr-clock');
@@ -1045,14 +1046,41 @@ function setWaypointCutoff(wpi, val) {
   renderPaceTable(); // met à jour l'état danger (et masque/affiche la ligne barrière)
   autosave();
 }
-/** Supprime un point de passage (borne km, sommet ou point manuel). */
-function deleteWaypoint(wpi) {
-  const i = +wpi;
-  if (!Number.isInteger(i) || i < 0 || i >= state.waypoints.length) return;
-  state.waypoints.splice(i, 1);
+// Suppression de point : confirmation en 2 temps (anti-fausse-manip) + annulation 5 s.
+let armedDel = null, armedT = null;
+
+/** 1er tap = arme le bouton (« Supprimer ? ») ; 2e tap = supprime. Se désarme seul. */
+function armOrDeleteWaypoint(btn) {
+  if (btn === armedDel) { disarmDel(); deleteWaypoint(btn.dataset.wpi); return; }
+  disarmDel();
+  armedDel = btn;
+  btn.classList.add('armed');
+  btn.textContent = 'Supprimer ?';
+  armedT = setTimeout(disarmDel, 3200);
+}
+function disarmDel() {
+  clearTimeout(armedT); armedT = null;
+  if (armedDel) { armedDel.classList.remove('armed'); armedDel.textContent = '🗑️'; armedDel = null; }
+}
+
+/** Réinsère des points au bon endroit (tri par distance). */
+function reinsertWaypoints(list) {
+  state.waypoints.push(...list);
+  state.waypoints.sort((a, b) => a.d - b.d);
   renderWaypointMarkers();
   renderPaceTable();
   autosave();
+}
+
+/** Supprime un point de passage (borne km, sommet ou point manuel) — annulable 5 s. */
+function deleteWaypoint(wpi) {
+  const i = +wpi;
+  if (!Number.isInteger(i) || i < 0 || i >= state.waypoints.length) return;
+  const [removed] = state.waypoints.splice(i, 1);
+  renderWaypointMarkers();
+  renderPaceTable();
+  autosave();
+  showUndo(`Point « ${removed.label} » supprimé`, () => reinsertWaypoints([removed]));
 }
 
 /** Un point « borne kilométrique » automatique, non personnalisé (masquable en lot). */
@@ -1064,14 +1092,37 @@ function isPlainKmWaypoint(w) {
 
 /** Masque toutes les bornes kilométriques auto (garde sommets et points personnalisés). */
 function hideKmWaypoints() {
-  const before = state.waypoints.length;
+  const removed = state.waypoints.filter(isPlainKmWaypoint);
+  if (!removed.length) { toast('Aucune borne kilométrique à masquer.'); return; }
   state.waypoints = state.waypoints.filter((w) => !isPlainKmWaypoint(w));
-  const removed = before - state.waypoints.length;
-  if (!removed) { toast('Aucune borne kilométrique à masquer.'); return; }
   renderWaypointMarkers();
   renderPaceTable();
   autosave();
-  toast(`${removed} borne${removed > 1 ? 's' : ''} kilométrique${removed > 1 ? 's' : ''} masquée${removed > 1 ? 's' : ''}.`);
+  const n = removed.length;
+  showUndo(`${n} borne${n > 1 ? 's' : ''} km masquée${n > 1 ? 's' : ''}`, () => reinsertWaypoints(removed));
+}
+
+// Barre d'annulation (visible ~5 s après une suppression).
+let undoT = null, undoFn = null;
+function showUndo(msg, fn) {
+  undoFn = fn;
+  $('undo-msg').textContent = msg;
+  const bar = $('undo-bar');
+  bar.hidden = false;
+  requestAnimationFrame(() => bar.classList.add('show'));
+  clearTimeout(undoT);
+  undoT = setTimeout(hideUndo, 5000);
+}
+function hideUndo() {
+  clearTimeout(undoT); undoT = null; undoFn = null;
+  const bar = $('undo-bar');
+  bar.classList.remove('show');
+  setTimeout(() => { if (!bar.classList.contains('show')) bar.hidden = true; }, 250);
+}
+function runUndo() {
+  const fn = undoFn;
+  hideUndo();
+  if (fn) fn();
 }
 
 /** Affiche la ligne « barrière horaire » (cachée par défaut) et ouvre le sélecteur. */
