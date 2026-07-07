@@ -8,6 +8,7 @@ import { RaceMap } from './map.js';
 import { demoGpx } from './demo.js';
 import {
   buildTimeModel, calibrateForAvgSpeed, calibrateForTotalTime,
+  calibrateForTimeAtDistance, avgSpeedFor,
   timeAtDistance, fmtDuration, fmtClock,
 } from './pacing.js';
 
@@ -53,7 +54,10 @@ function init() {
   $('pf-follow').addEventListener('click', () => {
     state.follow = !state.follow;
     $('pf-follow').classList.toggle('active', state.follow);
-    if (state.follow && state.lastFix) recenter();
+    if (state.follow && state.lastFix) {
+      recenter();
+      if (state.profile.isZoomed()) state.profile.centerOn(state.lastFix.d);
+    }
   });
 
   // panneau allure
@@ -71,6 +75,12 @@ function init() {
   });
   $('start-clock').addEventListener('input', (e) => {
     state.startClock = clockToMs(e.target.value); recomputePacing();
+  });
+  // édition d'un temps de passage cible sur une ligne de la table
+  $('pace-table').addEventListener('change', (e) => {
+    const inp = e.target.closest('.pr-clock');
+    if (!inp || !inp.value) return;
+    editWaypointTime(parseFloat(inp.dataset.d), inp.value);
   });
 
   window.addEventListener('resize', () => {
@@ -137,6 +147,11 @@ function startApp(track) {
     state.profile = new ProfileChart($('profile'), $('profile-tip'));
     state.profile.onScrub = (d, pt) => onScrub(d, pt);
     state.profile.onScrubEnd = () => { if (!state.lastFix && state.map) { state.map.clearCursor(); } };
+    // zoom/pan manuel : on désactive les onglets de vue prédéfinie
+    state.profile.onViewChange = () => {
+      $('pf-full').classList.remove('active');
+      $('pf-zoom').classList.remove('active');
+    };
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
@@ -146,6 +161,10 @@ function startApp(track) {
   updateStatbar(0);
   setProfileView('full');
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+`);
+  if (!state.hintShown) {
+    state.hintShown = true;
+    setTimeout(() => toast('💡 Pince pour zoomer le profil · glisse pour te déplacer · tape pour lire un point'), 3000);
+  }
 }
 
 // ------------------------------------------------------------------ POINTS DE PASSAGE AUTO
@@ -234,8 +253,9 @@ function onPosition(pos) {
     state.map.highlightCursor(projected.lat, projected.lon);
   }
 
-  // profil
+  // profil : marqueur de position + recentrage si suivi actif et zoomé
   state.profile.setCursor(proj.along);
+  if (state.follow && state.profile.isZoomed()) state.profile.centerOn(proj.along);
 
   updateStatbar(proj.along, proj.dist);
   updateClimbBanner(proj.along);
@@ -473,7 +493,7 @@ function renderPaceTable() {
   rows.push({ d: state.track.total, label: '🏁 Arrivée', summit: false });
 
   const posD = state.lastFix ? state.lastFix.d : -1;
-  let html = `<div class="pace-row head"><span>Point</span><span>km</span><span>Passage</span><span>Δ</span></div>`;
+  let html = `<div class="pace-row head"><span>Point</span><span>km</span><span>Cible ✎</span><span>Δ</span></div>`;
   for (const r of rows) {
     const tSec = timeAtDistance(pts, cum, r.d);
     const clock = fmtClock(start + tSec * 1000);
@@ -488,11 +508,31 @@ function renderPaceTable() {
     html += `<div class="pace-row${passed ? ' passed' : ''}${r.summit ? ' summit' : ''}">
       <span class="pr-label">${r.label}</span>
       <span>${(r.d / 1000).toFixed(1)}</span>
-      <span class="pr-clock">${clock}</span>
+      <input class="pr-clock" type="time" value="${clock}" data-d="${r.d}" aria-label="Temps de passage cible">
       <span class="pr-delta">${delta}</span>
     </div>`;
   }
   tbl.innerHTML = html;
+}
+
+/**
+ * Édite un temps de passage cible sur un point : on recalibre l'allure pour
+ * atteindre ce point à l'heure demandée, et tout le reste se recalcule.
+ */
+function editWaypointTime(d, hhmm) {
+  const start = state.startClock || Date.now();
+  let targetMs = clockToMs(hhmm);
+  let targetSec = (targetMs - start) / 1000;
+  if (targetSec <= 60) targetSec += 86400; // heure passée => jour suivant (courses longues)
+
+  const ref = calibrateForTimeAtDistance(state.track.points, d, targetSec);
+  if (!ref || !isFinite(ref) || ref <= 0) { toast('Heure impossible pour ce point.'); return; }
+
+  const avgKmh = avgSpeedFor(state.track.points, ref);
+  state.manualKmh = avgKmh;                       // précision complète => temps exact
+  $('manual-speed').value = avgKmh.toFixed(1);    // affichage arrondi
+  setPaceMode('manual'); // recalcule tout et affiche la table à jour
+  toast(`Allure calée : ${avgKmh.toFixed(1)} km/h moy. pour passer à ${hhmm}.`);
 }
 
 // ------------------------------------------------------------------ FEUILLE / SHEET
