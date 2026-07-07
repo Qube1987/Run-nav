@@ -143,8 +143,17 @@ function init() {
 // ------------------------------------------------------------------ PWA / HORS-LIGNE
 let deferredInstall = null;
 function setupPWA() {
-  // service worker
+  // service worker + mise à jour automatique (recharge une fois quand une
+  // nouvelle version prend le contrôle, pour ne jamais rester sur du cache périmé)
   if ('serviceWorker' in navigator) {
+    let reloaded = false;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+    }
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => { /* pas bloquant */ });
     });
@@ -721,13 +730,15 @@ async function restoreFromCode(code) {
   try {
     const row = await cloudLoad(code);
     if (!row) { showWelcomeError('Aucune sauvegarde pour ce code.'); return; }
-    if (!row.track || !row.track.pts || row.track.pts.length < 2) {
+    let track0 = row.track;
+    if (typeof track0 === 'string') { try { track0 = JSON.parse(track0); } catch (_) { track0 = null; } }
+    if (!track0 || !Array.isArray(track0.pts) || track0.pts.length < 2) {
       showWelcomeError('Cette sauvegarde ne contient pas de parcours. Charge le GPX puis restaure via le panneau Allure.');
       return;
     }
-    const rawPoints = row.track.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] }));
+    const rawPoints = track0.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] }));
     const track = buildTrack(rawPoints);
-    track.name = row.track.name || row.name || 'Parcours';
+    track.name = track0.name || row.name || 'Parcours';
     state.rawPoints = rawPoints;
     startApp(track);              // construit carte + profil (applique aussi le local éventuel)
     applyConfig(row.data);        // puis on impose la config du cloud
