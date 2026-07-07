@@ -135,6 +135,14 @@
 
       <div class="sheet-body">
         <div class="field">
+          <label>Type d'effort (modèle de pente)</label>
+          <div class="seg">
+            <button class="seg-btn active" data-activity="run" type="button">🏃 Course / trail</button>
+            <button class="seg-btn" data-activity="bike" type="button">🚴 Vélo</button>
+          </div>
+        </div>
+
+        <div class="field">
           <label>Mode de calcul de l'allure</label>
           <div class="seg">
             <button class="seg-btn active" data-pacemode="live" type="button">Vitesse live</button>
@@ -173,7 +181,24 @@
         </button>
         <p class="hint" id="recale-hint">Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage.</p>
 
-        <h3 class="sub">Temps de passage</h3>
+        <h3 class="sub">Sauvegarde</h3>
+        <p class="hint">Tes réglages sont gardés sur cet appareil automatiquement. Pour les retrouver ailleurs (ou après un vidage complet), sauvegarde-les dans le cloud : tu obtiens un code à ressaisir.</p>
+        <div class="cloud-box">
+          <div class="cloud-code-line">
+            <span>Code de sauvegarde :</span>
+            <strong id="cloud-code">—</strong>
+          </div>
+          <div class="field-row">
+            <button id="cloud-save" class="wide-btn" type="button">☁️ Sauvegarder dans le cloud</button>
+          </div>
+          <div class="input-with-btn">
+            <input id="cloud-restore-code" type="text" inputmode="text" autocapitalize="characters"
+                   maxlength="6" placeholder="Ressaisir un code…" />
+            <button id="cloud-restore" type="button" title="Restaurer">⬇︎</button>
+          </div>
+        </div>
+
+        <h3 class="sub">Temps de passage &amp; points</h3>
         <p class="hint" id="pace-summary">–</p>
         <div id="pace-table" class="pace-table"></div>
       </div>

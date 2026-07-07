@@ -4,18 +4,36 @@
 // selon la pente locale (on ralentit en montée, on accélère un peu en descente),
 // puis calibrée pour que la moyenne réelle corresponde à la vitesse de référence.
 
+// Type d'activité : 'run' (course/trail) ou 'bike' (vélo). Change le modèle de pente.
+let ACTIVITY = 'run';
+export function setActivityType(t) { ACTIVITY = t === 'bike' ? 'bike' : 'run'; }
+export function getActivityType() { return ACTIVITY; }
+
 /**
- * Facteur de vitesse relatif selon la pente (%).
- * 1 = vitesse de référence à plat. En montée on ralentit fortement,
- * en descente on gagne un peu (plafonné).
+ * Facteur de vitesse relatif selon la pente (% = rise/run × 100).
+ * 1 = vitesse de référence à plat.
+ *
+ * Course/trail : dérivé du coût métabolique de la course en pente (Minetti et al.,
+ * J. Appl. Physiol. 2002). À puissance métabolique constante, la vitesse est
+ * inversement proportionnelle au coût énergétique par mètre → on ralentit fort en
+ * montée, on accélère en descente douce (optimum ~ −10 %), puis on ralentit à
+ * nouveau en descente très raide. Bien plus réaliste qu'un facteur linéaire.
+ *
+ * Vélo : la montée pénalise beaucoup plus (le plat est limité par l'aéro), la
+ * descente fait gagner davantage. Modèle empirique simple.
  */
-function speedFactor(grade) {
-  if (grade >= 0) {
-    // ~ -8 %/point de pente positif, plancher à 0.25
-    return Math.max(0.25, 1 - grade * 0.085);
+function speedFactor(gradePct) {
+  const i = Math.max(-45, Math.min(45, gradePct)) / 100; // fraction, bornée
+
+  if (ACTIVITY === 'bike') {
+    if (i >= 0) return Math.max(0.1, 1 / (1 + 24 * i));   // ex : 5 %→0.45, 10 %→0.29
+    return Math.min(1.9, 1 + 11 * -i);                    // descente : gain plafonné
   }
-  // descente : léger gain, plafonné à +25 %
-  return Math.min(1.25, 1 + -grade * 0.02);
+
+  // Course à pied — coût métabolique (J/kg/m), normalisé au plat (C(0) = 3.6).
+  const C = 155.4 * i ** 5 - 30.4 * i ** 4 - 43.3 * i ** 3
+          + 46.3 * i ** 2 + 19.5 * i + 3.6;
+  return Math.max(0.2, Math.min(1.9, 3.6 / C));
 }
 
 /**

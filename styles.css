@@ -244,29 +244,46 @@ body { overflow: hidden; }
 .wide-btn:active { transform: scale(0.98); }
 .wide-btn:disabled { opacity: 0.45; background: var(--panel-2); color: var(--muted); }
 
-.pace-table { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.pace-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 30px 50px 98px; gap: 4px; align-items: center;
-  padding: 8px 8px 8px 10px; font-size: 13.5px; border-bottom: 1px solid var(--line);
+/* ---- Cloud ---- */
+.cloud-box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.cloud-code-line { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+.cloud-code-line strong { color: var(--accent-2); font-size: 18px; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+.cloud-box .field-row { margin: 0 0 8px; }
+.cloud-box input { text-transform: uppercase; letter-spacing: 2px; }
+
+/* ---- Temps de passage : cartes ---- */
+.pace-table { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pace-card {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 9px 10px; display: flex; flex-direction: column; gap: 7px;
 }
-.pace-row .pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pace-row .pr-elapsed { color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
-.pace-row input.pr-clock::-webkit-calendar-picker-indicator { padding: 0; margin-left: 2px; opacity: 0.55; }
-.pace-row:last-child { border-bottom: none; }
-.pace-row.head { background: var(--panel-2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; padding: 8px 12px; }
-.pace-row input.pr-clock {
-  font-weight: 700; color: var(--accent-2);
-  background: rgba(255, 210, 74, 0.08);
-  border: 1px solid rgba(255, 210, 74, 0.25); border-radius: 7px;
-  padding: 4px 4px; font-size: 13px; width: 100%; min-width: 0;
-  font-family: inherit; -webkit-appearance: none; appearance: none;
+.pace-card.passed { opacity: 0.55; }
+.pace-card.summit { border-color: rgba(232, 97, 60, 0.35); }
+.pace-card.danger { border-color: #e0484a; background: rgba(224, 72, 74, 0.10); }
+.pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pc-label { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-km { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
+.pc-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.pc-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pc-cell > i { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--muted); }
+.pc-cell > b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc-cell input {
+  width: 100%; min-width: 0; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  border-radius: 8px; padding: 6px 5px; -webkit-appearance: none; appearance: none;
 }
-.pace-row input.pr-clock:focus { outline: none; border-color: var(--accent-2); background: rgba(255, 210, 74, 0.16); }
-.pace-row.passed input.pr-clock { color: var(--muted); border-color: var(--line); background: transparent; }
-.pace-row .pr-delta { text-align: right; color: var(--muted); font-size: 13px; }
-.pace-row.passed { opacity: 0.5; }
-.pace-row.passed .pr-delta { color: var(--green); }
-.pace-row.summit .pr-label::before { content: "⛰️ "; }
+input.pr-clock { color: var(--accent-2); background: rgba(255, 210, 74, 0.08); border: 1px solid rgba(255, 210, 74, 0.25); }
+input.pr-clock:focus { outline: none; border-color: var(--accent-2); }
+input.pr-cutoff { color: #ff8a8a; background: rgba(224, 72, 74, 0.08); border: 1px solid rgba(224, 72, 74, 0.28); }
+input.pr-cutoff:focus { outline: none; border-color: #e0484a; }
+.pc-info-row { display: flex; align-items: center; gap: 8px; }
+input.pr-info {
+  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 7px 9px; font-size: 13px; font-family: inherit;
+}
+input.pr-info:focus { outline: none; border-color: var(--blue); }
+.pc-warn { flex: none; color: #ff8a8a; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pc-ok { flex: none; color: var(--green); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pace-card input::-webkit-calendar-picker-indicator { padding: 0; opacity: 0.5; }
 
 /* ============================= MARQUEURS CARTE ============================= */
 .pos-icon .pos-dot {
