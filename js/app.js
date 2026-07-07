@@ -27,9 +27,27 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Filet de sécurité : au lieu d'une page blanche, toute erreur non gérée
+// s'affiche en bas de l'écran (diagnostic sur le téléphone de l'utilisateur).
+function showFatal(msg) {
+  try {
+    let el = document.getElementById('fatal-err');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fatal-err';
+      el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7a1f1f;color:#fff;padding:10px 12px;font:12px/1.4 system-ui;white-space:pre-wrap;max-height:40vh;overflow:auto';
+      el.addEventListener('click', () => el.remove());
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = '⚠️ ' + msg + '\n(touche pour fermer)';
+  } catch (_) { /* ignore */ }
+}
+window.addEventListener('error', (e) => showFatal(e.message + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : '')));
+window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejetée : ' + ((e.reason && e.reason.message) || e.reason)));
+
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -132,7 +150,6 @@ function init() {
   $('races-list').addEventListener('click', onRacesClick);
   updateAuthUI();
 
-  $('act-load').addEventListener('click', () => $('gpx-input').click());
   $('act-start').addEventListener('click', toggleTracking);
   $('act-wpt').addEventListener('click', addWaypointAtCursor);
   $('act-pace').addEventListener('click', () => openSheet(true));
@@ -1664,7 +1681,8 @@ function startInboxPolling() {
 function stopInboxPolling() { if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; } }
 async function pollInbox() {
   if (!state.cloudCode) return;
-  const list = await fetchCheers(state.cloudCode);
+  let list;
+  try { list = await fetchCheers(state.cloudCode); } catch (_) { return; }
   state._cheers = list;
   if (state._inboxLoaded) {
     const news = list.filter((c) => !state.seenCheers.has(c.id));
@@ -1726,7 +1744,8 @@ async function followRace(code, pseudo) {
     afterConfigRestored();
     enterFollowerMode();
   } catch (e) {
-    showWelcomeError('Impossible de suivre (réseau ?).');
+    showWelcomeError('Suivi impossible : ' + ((e && e.message) || e));
+    showFatal('followRace: ' + ((e && e.stack) || e));
   } finally {
     btn.disabled = false; btn.textContent = prev;
   }
@@ -1750,11 +1769,13 @@ function startFollowerPolling() {
 function stopFollowerPolling() { if (state._liveT) { clearInterval(state._liveT); state._liveT = null; } }
 async function pollFollower() {
   const code = state.followCode; if (!code) return;
-  const live = await fetchLive(code);
-  updateFollowerBanner(live);
-  if (live && live.lat != null) renderAthletePosition(live);
-  const media = await fetchMedia(code);
-  handleFollowerMedia(media);
+  try {
+    const live = await fetchLive(code);
+    updateFollowerBanner(live);
+    if (live && live.lat != null) renderAthletePosition(live);
+    const media = await fetchMedia(code);
+    handleFollowerMedia(media);
+  } catch (_) { /* réseau : on réessaiera au prochain tick */ }
 }
 function updateFollowerBanner(live) {
   const b = $('live-banner');
