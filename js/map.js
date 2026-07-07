@@ -100,7 +100,7 @@ export class RaceMap {
 
   addWaypointMarker(wpt, barrierText, icons) {
     const isBar = !!barrierText;
-    const list = (icons && icons.length ? icons : (wpt.icon ? [wpt.icon] : [])).slice(0, 4);
+    const list = (icons && icons.length ? icons : (wpt.icon ? [wpt.icon] : [])).slice(0, 8);
     const color = wpt.color || (isBar ? '#e0484a' : '#ff5a3c');
     const badge = isBar ? '<span class="wpt-bar">⏱</span>' : '';
     let html, size, anchor;

@@ -230,7 +230,7 @@ export class ProfileChart {
         ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
         const ih = 15 * this.dpr;              // hauteur d'une icône (pas de recouvrement)
-        icons.slice(0, 4).forEach((ic, k) => ctx.fillText(ic, xx, yy - 7 * this.dpr - k * ih));
+        icons.slice(0, 8).forEach((ic, k) => ctx.fillText(ic, xx, yy - 7 * this.dpr - k * ih));
       }
     }
 
