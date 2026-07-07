@@ -277,7 +277,11 @@ export class ProfileChart {
       this._downX = e.clientX; this._downY = e.clientY;
       this._moved = false;
       this._panLastX = e.clientX;
-      if (this._pointers.size === 2) this._startPinch();
+      if (this._pointers.size === 2) { this._startPinch(); this._grab = null; return; }
+      // intention à la pose du doigt : repère bleu, point jaune, ou pan
+      const wp = this._dotAt(e.clientX, e.clientY);
+      const onCursor = this._cursorGrab(e.clientX);
+      this._grab = { wp, scrub: !!(wp || onCursor) }; // près d'un point/barre => scrub possible
     };
 
     const onMove = (e) => {
@@ -293,8 +297,11 @@ export class ProfileChart {
       }
       // un seul doigt
       const dx = e.clientX - this._downX, dy = e.clientY - this._downY;
-      if (!this._moved && Math.hypot(dx, dy) > 8) this._moved = true;
-      if (this._moved) {
+      if (!this._moved && Math.hypot(dx, dy) > 6) this._moved = true;
+      if (!this._moved) return;
+      if (this._grab && this._grab.scrub) {
+        this._scrubTo(e.clientX);              // déplace la barre jaune
+      } else {
         this._panBy(e.clientX - this._panLastX);
         this._panLastX = e.clientX;
         this._notifyView();
@@ -309,7 +316,6 @@ export class ProfileChart {
 
       if (wasPinch) {
         this._pinch = null;
-        // s'il reste un doigt, on repart proprement en pan
         if (this._pointers.size === 1) {
           const rem = [...this._pointers.values()][0];
           this._panLastX = rem.x; this._downX = rem.x; this._downY = rem.y; this._moved = true;
@@ -317,10 +323,17 @@ export class ProfileChart {
         return;
       }
       if (!this._moved) {
-        const wp = this._waypointAt(e.clientX); // tap sur un point de passage ?
-        if (wp && this.onWaypointTap) this.onWaypointTap(wp);
-        else this._readAt(e.clientX);           // sinon lecture du profil
+        // tap : sur un repère → sa fiche ; sinon → point précis de la courbe
+        if (this._grab && this._grab.wp) {
+          this.setCursor(this._grab.wp.d);
+          if (this.onWaypointTap) this.onWaypointTap(this._grab.wp);
+        } else {
+          this._scrubTo(e.clientX);
+        }
+      } else if (this._grab && this._grab.scrub) {
+        this._scrubTo(e.clientX); // fin de glissé : fige le point
       }
+      this._grab = null;
     };
 
     c.addEventListener('pointerdown', onDown);
@@ -394,29 +407,46 @@ export class ProfileChart {
     this.render();
   }
 
-  _readAt(clientX) {
-    const d = this._clientXToData(clientX, true);
-    const pt = pointAtDistance(this.track.points, d);
-    if (this.onScrub) this.onScrub(d, pt);
-    this._showTip(d, pt);
-    clearTimeout(this._tipTimer);
-    this._tipTimer = setTimeout(() => { if (this.tip) this.tip.hidden = true; if (this.onScrubEnd) this.onScrubEnd(); }, 2500);
+  _toCanvasPx(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect();
+    return { px: (clientX - r.left) * this.dpr, py: (clientY - r.top) * this.dpr };
   }
 
-  /** Point de passage sous le doigt (par proximité horizontale) ou null. */
-  _waypointAt(clientX) {
+  /** Repère (point bleu) sous le doigt, capture serrée en x ET y, ou null. */
+  _dotAt(clientX, clientY) {
     if (!this.waypoints || !this.waypoints.length) return null;
     const s = this._scales();
     const [d0, d1] = this._range();
-    const tapX = (clientX - this.canvas.getBoundingClientRect().left) * this.dpr;
-    const tol = 12 * this.dpr;
-    let best = null, bestDx = Infinity;
+    const { px, py } = this._toCanvasPx(clientX, clientY);
+    const r = 15 * this.dpr;
+    let best = null, bestDist = r;
     for (const wp of this.waypoints) {
       if (wp.d < d0 || wp.d > d1) continue;
-      const dx = Math.abs(s.x(wp.d) - tapX);
-      if (dx <= tol && dx < bestDx) { bestDx = dx; best = wp; }
+      const wy = s.y(pointAtDistance(this.track.points, wp.d).ele);
+      const dist = Math.hypot(s.x(wp.d) - px, wy - py);
+      if (dist < bestDist) { bestDist = dist; best = wp; }
     }
     return best;
+  }
+
+  /** Le doigt attrape-t-il la barre jaune (curseur) ? Proximité horizontale sur
+      toute la hauteur → facile à saisir pour glisser. */
+  _cursorGrab(clientX) {
+    if (this.cursorD == null || !this.track) return false;
+    const s = this._scales();
+    const [d0, d1] = this._range();
+    if (this.cursorD < d0 || this.cursorD > d1) return false;
+    const px = this._toCanvasPx(clientX, 0).px;
+    return Math.abs(s.x(this.cursorD) - px) < 16 * this.dpr;
+  }
+
+  /** Place le curseur jaune à la position du doigt et remonte le point sélectionné. */
+  _scrubTo(clientX) {
+    const d = this._clientXToData(clientX, true);
+    this.setCursor(d);
+    const pt = pointAtDistance(this.track.points, d);
+    if (this.onScrub) this.onScrub(d, pt);
+    if (this.onPointSelect) this.onPointSelect(d);
   }
 
   _notifyView() { if (this.onViewChange) this.onViewChange(); }

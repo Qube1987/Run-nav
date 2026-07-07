@@ -358,13 +358,20 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 .leaflet-tooltip-top::before { border-top-color: var(--panel); }
 
 /* ============================= FICHE POINT ============================= */
-.wpt-info { position: fixed; inset: 0; z-index: 2500; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.wi-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px); }
+/* Non-modale, ancrée en haut : le profil (en bas) reste manipulable pour
+   glisser le point jaune pendant que la fiche se met à jour. */
+.wpt-info {
+  position: fixed; inset: 0; z-index: 2500; padding: 12px;
+  display: flex; align-items: flex-start; justify-content: center;
+  pointer-events: none; /* n'intercepte pas les gestes hors de la carte */
+}
+.wi-bg { display: none; }
 .wi-card {
   position: relative; width: 100%; max-width: 380px;
+  margin-top: calc(var(--safe-top) + 54px); pointer-events: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-  padding: 18px 18px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-  animation: wiPop 0.18s ease;
+  padding: 16px 16px 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+  animation: wiPop 0.16s ease;
 }
 @keyframes wiPop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .wi-close {
