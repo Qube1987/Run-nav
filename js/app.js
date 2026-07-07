@@ -346,6 +346,7 @@ function startApp(track) {
   if (saved) applyConfig(saved);
   setActivityType(state.activity);
   state.cloudCode = localGet('code:' + state.gpxKey);
+  state._cloudInit = false; // autorise l'auto-création de la sauvegarde cloud pour cette épreuve
 
   $('welcome').hidden = true;
   $('app').hidden = false;
@@ -833,7 +834,10 @@ function serializeTrack() {
   };
 }
 
-/** Sauvegarde locale immédiate (débounce) + mise à jour cloud de la config si un code existe. */
+/** Sauvegarde locale immédiate (débounce) + cloud automatique.
+    - Si l'épreuve a déjà un code cloud → on met à jour la config (patch).
+    - Sinon, si l'utilisateur est connecté → on crée automatiquement la sauvegarde
+      cloud (rattachée au compte) dès la première modification, sans rien cliquer. */
 function autosave() {
   clearTimeout(state._saveT);
   state._saveT = setTimeout(() => {
@@ -843,6 +847,16 @@ function autosave() {
     if (state.cloudCode) {
       cloudSaveConfig(state.cloudCode, cfg, new Date().toISOString())
         .catch(() => { /* hors-ligne : le local suffit */ });
+    } else if (isLoggedIn() && !state._cloudInit) {
+      state._cloudInit = true; // évite de créer plusieurs codes en parallèle
+      const code = makeCode();
+      cloudSaveFull(code, state.gpxKey, state.track.name, cfg, serializeTrack(), new Date().toISOString())
+        .then(() => {
+          state.cloudCode = code;
+          localSet('code:' + state.gpxKey, code);
+          const el = $('cloud-code'); if (el) el.textContent = code;
+        })
+        .catch(() => { state._cloudInit = false; /* réessaie à la prochaine modif */ });
     }
   }, 700);
 }
