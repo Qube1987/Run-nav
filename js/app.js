@@ -22,6 +22,10 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
+// l'accueil pour diagnostiquer facilement quelle version tourne réellement.
+const APP_VERSION = 'v30';
+
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
 
@@ -185,6 +189,8 @@ function init() {
   if (!state.speedCustomized) state.manualKmh = DEFAULT_KMH[state.activity];
   document.querySelectorAll('[data-activity]').forEach((b) =>
     b.classList.toggle('active', b.dataset.activity === state.activity));
+
+  const ver = $('app-version'); if (ver) ver.textContent = APP_VERSION;
 
   setupPWA();
 }
