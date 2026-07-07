@@ -44,11 +44,46 @@
 
       <button id="demo-btn" class="ghost-btn" type="button">Essayer avec un parcours démo</button>
 
-      <div class="welcome-restore">
-        <input id="welcome-code" type="text" inputmode="text" autocapitalize="characters"
-               maxlength="6" placeholder="Code de sauvegarde cloud…" />
-        <button id="welcome-restore-btn" type="button">☁️ Ouvrir mon parcours</button>
+      <!-- Compte : mémoriser ses épreuves -->
+      <div id="auth-box" class="auth-box">
+        <!-- déconnecté -->
+        <div id="auth-out" class="auth-out">
+          <div class="auth-fields">
+            <input id="auth-user" type="text" autocapitalize="none" autocorrect="off"
+                   autocomplete="username" placeholder="Identifiant" />
+            <input id="auth-pass" type="password" autocomplete="current-password"
+                   placeholder="Mot de passe" />
+          </div>
+          <div class="auth-btns">
+            <button id="auth-login" class="wide-btn" type="button">Se connecter</button>
+            <button id="auth-signup" class="ghost-btn" type="button">Créer un compte</button>
+          </div>
+          <p class="hint auth-hint">Connecte-toi pour garder toutes tes épreuves configurées et les retrouver d'un appareil à l'autre.</p>
+        </div>
+        <!-- connecté -->
+        <div id="auth-in" class="auth-in" hidden>
+          <div class="auth-who">
+            <span>👤 <strong id="auth-name">—</strong></span>
+            <button id="auth-logout" class="link-btn" type="button">Se déconnecter</button>
+          </div>
+          <div class="races-head">
+            <span>Mes épreuves</span>
+            <button id="races-refresh" class="link-btn" type="button" title="Actualiser">⟳</button>
+          </div>
+          <ul id="races-list" class="races-list"></ul>
+          <p id="races-empty" class="hint races-empty" hidden>Aucune épreuve enregistrée. Charge un GPX, règle-le puis « Sauvegarder dans le cloud ».</p>
+        </div>
+        <p id="auth-error" class="welcome-error" hidden></p>
       </div>
+
+      <details class="welcome-restore-wrap">
+        <summary>Ouvrir par code de partage</summary>
+        <div class="welcome-restore">
+          <input id="welcome-code" type="text" inputmode="text" autocapitalize="characters"
+                 maxlength="6" placeholder="Code de sauvegarde cloud…" />
+          <button id="welcome-restore-btn" type="button">☁️ Ouvrir mon parcours</button>
+        </div>
+      </details>
 
       <button id="install-btn" class="ghost-btn" type="button" hidden>📲 Installer l'application</button>
       <p id="ios-install" class="hint ios-install" hidden>Sur iPhone : bouton <b>Partager</b> ⎋ puis <b>« Sur l'écran d'accueil »</b>.</p>

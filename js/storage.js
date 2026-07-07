@@ -1,9 +1,11 @@
 // Persistance des réglages : localStorage (immédiat, hors-ligne) + Supabase
 // (sauvegarde cloud partagée par « code », survit au vidage de site / changement
 // d'appareil). Base sandbox partagée → table préfixée `runnav_`.
+// Si l'utilisateur est connecté (voir auth.js), ses épreuves sont rattachées à
+// son compte (colonne user_id) et retrouvées automatiquement dans « Mes épreuves ».
 
-const SB_URL = 'https://sjuxeqmqfdonzvmtwiby.supabase.co';
-const SB_KEY = 'sb_publishable_e6TkpLNF0wDJMUrMC7w1fQ_dIqtP2Ce';
+import { apiFetch } from './auth.js';
+
 const TABLE = 'runnav_configs';
 const LS = (k) => `runnav:${k}`;
 
@@ -27,16 +29,13 @@ export function localLoad(key) {
 export function localGet(k) { try { return localStorage.getItem(LS(k)); } catch (_) { return null; } }
 export function localSet(k, v) { try { localStorage.setItem(LS(k), v); } catch (_) { /* ignore */ } }
 
-function headers() {
-  return { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
-}
-
-/** Sauvegarde complète (config + trace GPX) — upsert par code. */
+/** Sauvegarde complète (config + trace GPX) — upsert par code.
+    Si connecté, user_id est rempli automatiquement côté serveur (défaut auth.uid()). */
 export async function cloudSaveFull(code, gpxKey, name, data, track, isoNow) {
   const body = { code, gpx_key: gpxKey, name: name || null, data, track, updated_at: isoNow };
-  const res = await fetch(`${SB_URL}/rest/v1/${TABLE}`, {
+  const res = await apiFetch(`/rest/v1/${TABLE}`, {
     method: 'POST',
-    headers: { ...headers(), Prefer: 'resolution=merge-duplicates,return=minimal' },
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error('cloud save ' + res.status);
@@ -44,22 +43,41 @@ export async function cloudSaveFull(code, gpxKey, name, data, track, isoNow) {
 
 /** Mise à jour de la config seule (autosave) — la trace reste inchangée. */
 export async function cloudSaveConfig(code, data, isoNow) {
-  const url = `${SB_URL}/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}`;
-  const res = await fetch(url, {
+  const path = `/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}`;
+  const res = await apiFetch(path, {
     method: 'PATCH',
-    headers: { ...headers(), Prefer: 'return=minimal' },
+    headers: { Prefer: 'return=minimal' },
     body: JSON.stringify({ data, updated_at: isoNow }),
   });
   if (!res.ok) throw new Error('cloud patch ' + res.status);
 }
 
-/** Récupère une sauvegarde par code. Renvoie { data, name, gpx_key, track } ou null. */
+/** Récupère une sauvegarde par code. Renvoie { data, name, gpx_key, track } ou null.
+    Passe par une RPC security-definer : marche pour une épreuve à soi, une épreuve
+    anonyme (partagée par code) ou celle d'un autre compte partagée par code. */
 export async function cloudLoad(code) {
-  const url = `${SB_URL}/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}&select=data,name,gpx_key,track`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await apiFetch(`/rest/v1/rpc/runnav_get_by_code`, {
+    method: 'POST',
+    body: JSON.stringify({ p_code: String(code || '').trim().toUpperCase() }),
+  });
   if (!res.ok) throw new Error('cloud load ' + res.status);
   const rows = await res.json();
-  return rows[0] || null;
+  return (Array.isArray(rows) ? rows[0] : rows) || null;
+}
+
+/** Liste les épreuves du compte connecté (RLS filtre automatiquement sur user_id). */
+export async function cloudListRaces() {
+  const path = `/rest/v1/${TABLE}?select=code,name,gpx_key,updated_at&order=updated_at.desc`;
+  const res = await apiFetch(path, { method: 'GET' });
+  if (!res.ok) throw new Error('cloud list ' + res.status);
+  return await res.json();
+}
+
+/** Supprime une épreuve du compte connecté (RLS empêche de toucher celles des autres). */
+export async function cloudDeleteRace(code) {
+  const path = `/rest/v1/${TABLE}?code=eq.${encodeURIComponent(code)}`;
+  const res = await apiFetch(path, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+  if (!res.ok) throw new Error('cloud delete ' + res.status);
 }
 
 /** Code de partage court, non ambigu (sans O/0/I/1/L). */
