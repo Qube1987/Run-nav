@@ -49,7 +49,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -134,8 +134,10 @@ function init() {
   $('follow-go').addEventListener('click', () => followRace($('follow-code').value, $('follow-name').value));
   $('follow-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') followRace($('follow-code').value, $('follow-name').value); });
   $('follow-tabs').addEventListener('click', onFollowTabsClick);
+  $('resume-follow').addEventListener('click', resumeFollowing);
   state.follows = loadFollows();
   state.followPseudo = localGet('pseudo') || null;
+  updateResumeFollow();
 
   // Athlète : média (photo/vidéo), partage, boîte de réception
   $('act-photo').addEventListener('click', () => $('media-input').click());
@@ -1900,6 +1902,40 @@ function loadFollows() { try { return JSON.parse(localGet('follows') || '[]'); }
 function saveFollows() { localSet('follows', JSON.stringify(state.follows)); }
 
 /** Entrée depuis l'accueil : valide, résout le code de suivi, ajoute et ouvre. */
+/** Affiche/masque le bouton « Reprendre le suivi » selon les suivis en cache. */
+function updateResumeFollow() {
+  const btn = $('resume-follow');
+  if (!btn) return;
+  const n = (state.follows || []).length;
+  btn.hidden = n === 0;
+  if (n === 0) return;
+  const sub = $('resume-follow-sub');
+  if (sub) {
+    if (n === 1) {
+      const f = state.follows[0];
+      sub.textContent = (f.athleteName || f.name || 'un athlète').trim();
+    } else {
+      sub.textContent = `${n} athlètes`;
+    }
+  }
+}
+
+/** Reprend le suivi mis en cache (après un rafraîchissement) sans ressaisir les codes. */
+async function resumeFollowing() {
+  if (!state.follows || !state.follows.length) { updateResumeFollow(); return; }
+  const btn = $('resume-follow'); const prev = btn.innerHTML;
+  btn.disabled = true; btn.querySelector('.rf-txt').innerHTML = '<b>Reprise…</b>';
+  try {
+    let idx = parseInt(localGet('followActive'), 10);
+    if (!(idx >= 0 && idx < state.follows.length)) idx = 0;
+    await openFollowAthlete(idx);
+  } catch (_) {
+    toast('Reprise impossible (réseau ?).');
+  } finally {
+    btn.disabled = false; btn.innerHTML = prev;
+  }
+}
+
 async function followRace(code, pseudo) {
   pseudo = (pseudo || '').trim();
   if (!pseudo) { showWelcomeError('Choisis un prénom / pseudo.'); return; }
@@ -1954,6 +1990,7 @@ async function openFollowAthlete(idx) {
   state.mode = 'follower';
   state.followActive = idx;
   state.followCode = f.code;
+  localSet('followActive', String(idx));
   startApp(track);
   enterFollowerMode();
 }
@@ -2010,6 +2047,7 @@ function exitFollowerToWelcome() {
   state.mode = 'athlete';
   $('app').hidden = true;
   $('welcome').hidden = false;
+  updateResumeFollow();
 }
 
 // --- Géolocalisation du follower : voir si l'athlète s'approche ---
