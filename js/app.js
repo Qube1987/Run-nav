@@ -48,7 +48,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1716,9 +1716,12 @@ async function shareLive() {
   else { try { code = await ensureFollowCode(); } catch (_) { toast('Impossible (réseau ?).'); return; } updateLiveBanner(); }
   if (!code) return;
   const url = `${location.origin}${location.pathname}?follow=${code}`;
+  const intro = state.mode === 'follower' ? 'Suis cet athlète en live' : 'Suis ma course en live';
+  const text = `${intro} : ${url}\nCode de suivi : ${code}`;
   try {
-    if (navigator.share) await navigator.share({ title: 'Run-Nav — suivi live', text: `Suis ma course en live : ${url}`, url });
-    else { await navigator.clipboard.writeText(url); toast(`Lien de suivi copié · code ${code}`); }
+    // On ne passe PAS `url` séparément : sinon Android le rajoute → URL en double.
+    if (navigator.share) await navigator.share({ title: 'Run-Nav — suivi live', text });
+    else { await navigator.clipboard.writeText(text); toast(`Message copié · code ${code}`); }
   } catch (_) { /* partage annulé */ }
 }
 
