@@ -30,6 +30,13 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Cadences réseau (ms) — espacées pour ménager la batterie (radio + GPS).
+// Elles sont mises en pause quand l'appli passe en arrière-plan (voir visibilitychange).
+const BROADCAST_MS = 8000;    // diffusion de la position de l'athlète
+const FOLLOW_POLL_MS = 10000; // sondage des athlètes suivis (follower)
+const MATES_POLL_MS = 10000;  // sondage des potes (athlète)
+const INBOX_POLL_MS = 12000;  // encouragements / messages
+
 // Filet de sécurité : au lieu d'une page blanche, toute erreur non gérée
 // s'affiche en bas de l'écran (diagnostic sur le téléphone de l'utilisateur).
 function showFatal(msg) {
@@ -50,7 +57,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -178,6 +185,12 @@ function init() {
   // curseur est dans le champ — il ne rogne jamais la carte / le profil.
   $('cheer-input').addEventListener('focus', () => { $('cheer-note').hidden = false; });
   $('cheer-input').addEventListener('blur', () => { $('cheer-note').hidden = true; });
+
+  // Batterie : coupe les boucles réseau quand l'appli n'est plus visible, les relance au retour.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pauseNetworkForBackground();
+    else resumeNetworkForForeground();
+  });
 
   // Compte : inscription / connexion / mes épreuves
   $('auth-login').addEventListener('click', () => doAuth('login'));
@@ -1802,7 +1815,8 @@ function stopLiveBroadcast() {
 function maybeBroadcast(lat, lon, d, ele) {
   if (!state.myFollowCode) return;
   const now = Date.now();
-  if (now - state._liveLastSent < 5000) return;
+  if (document.hidden) return; // en arrière-plan : on ne réveille pas la radio
+  if (now - state._liveLastSent < BROADCAST_MS) return;
   state._liveLastSent = now;
   broadcastPosition(state.myFollowCode, {
     athlete_name: myDisplayName(),
@@ -1876,7 +1890,7 @@ function startInboxPolling() {
   stopInboxPolling();
   state._inboxLoaded = false;
   pollInbox();
-  state._cheerT = setInterval(pollInbox, 12000);
+  state._cheerT = setInterval(pollInbox, INBOX_POLL_MS);
 }
 function stopInboxPolling() { if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; } }
 async function pollInbox() {
@@ -2301,10 +2315,27 @@ function focusMate(i) {
 function startMatesPolling() {
   if (state._matesT || state.mode !== 'athlete' || !state.mates.length) return;
   pollMates();
-  state._matesT = setInterval(pollMates, 5000);
+  state._matesT = setInterval(pollMates, MATES_POLL_MS);
 }
 function stopMatesPolling() {
   if (state._matesT) { clearInterval(state._matesT); state._matesT = null; }
+}
+
+// --- Économie batterie : suspend les boucles réseau hors premier plan ---
+/** Coupe uniquement les timers réseau (sans démonter la carte ni la géoloc). */
+function pauseNetworkForBackground() {
+  if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
+  if (state._matesT) { clearInterval(state._matesT); state._matesT = null; }
+  if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; }
+}
+/** Relance les boucles pertinentes au retour au premier plan (mise à jour immédiate). */
+function resumeNetworkForForeground() {
+  if (state.mode === 'follower') {
+    if (state.follows.length && !state._liveT) { pollFollower(); state._liveT = setInterval(pollFollower, FOLLOW_POLL_MS); }
+  } else if (state.mode === 'athlete') {
+    if (state.mates.length && !state._matesT) { pollMates(); state._matesT = setInterval(pollMates, MATES_POLL_MS); }
+    if (state.myFollowCode && !state._cheerT) { pollInbox(); state._cheerT = setInterval(pollInbox, INBOX_POLL_MS); }
+  }
 }
 async function pollMates() {
   if (state.mode !== 'athlete' || !state.mates.length) { stopMatesPolling(); return; }
@@ -2378,13 +2409,13 @@ function toggleFollowerGeo() {
     if (state.map) state.map.setFollowerPosition(state.followerPos.lat, state.followerPos.lon);
     $('follow-geo').classList.add('active');
     updateFollowerBanner(state.athleteFix);
-  }, () => { toast('Position refusée ou indisponible.'); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  }, () => { toast('Position refusée ou indisponible.'); }, { enableHighAccuracy: false, maximumAge: 15000, timeout: 20000 });
   toast('📍 Activation de ta position…');
 }
 function startFollowerPolling() {
   stopFollowerPolling();
   pollFollower();
-  state._liveT = setInterval(pollFollower, 5000);
+  state._liveT = setInterval(pollFollower, FOLLOW_POLL_MS);
 }
 function stopFollowerPolling() {
   if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
