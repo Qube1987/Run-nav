@@ -695,10 +695,14 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 .lb-btn.has-new { background: var(--accent); box-shadow: 0 0 0 2px rgba(255,90,60,0.4); }
 
 /* --- barre d'encouragement (follower) --- */
-.cheer-wrap { background: var(--panel); border-top: 1px solid var(--line); }
+.cheer-wrap { position: relative; background: var(--panel); border-top: 1px solid var(--line); }
+/* Avertissement en surimpression : posé au-dessus de la barre, il ne rogne pas la carte/profil. */
 .cheer-note {
-  margin: 0; padding: 8px 14px 0; font-size: 11.5px; line-height: 1.35;
+  position: absolute; left: 0; right: 0; bottom: 100%;
+  margin: 0; padding: 7px 14px; font-size: 11.5px; line-height: 1.3;
   color: var(--muted); text-align: center;
+  background: var(--panel); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
 }
 .cheer-bar {
   display: flex; align-items: center; gap: 8px;

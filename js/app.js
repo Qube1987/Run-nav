@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -167,8 +167,10 @@ function init() {
   $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
   $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
   $('cheer-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCheer({ text: $('cheer-input').value }); });
-  // l'avertissement de visibilité disparaît dès que le follower commence à écrire
-  $('cheer-input').addEventListener('input', () => { $('cheer-note').hidden = $('cheer-input').value.trim().length > 0; });
+  // l'avertissement de visibilité ne s'affiche (en surimpression) que lorsque le
+  // curseur est dans le champ — il ne rogne jamais la carte / le profil.
+  $('cheer-input').addEventListener('focus', () => { $('cheer-note').hidden = false; });
+  $('cheer-input').addEventListener('blur', () => { $('cheer-note').hidden = true; });
 
   // Compte : inscription / connexion / mes épreuves
   $('auth-login').addEventListener('click', () => doAuth('login'));
@@ -2425,7 +2427,7 @@ async function sendCheer({ is_like, text }) {
   });
   if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
   if (is_like) { const bt = $('cheer-like'); bt.classList.remove('pop'); void bt.offsetWidth; bt.classList.add('pop'); toast('❤️ Envoyé !'); }
-  else { $('cheer-input').value = ''; $('cheer-note').hidden = false; toast('💬 Message envoyé !'); }
+  else { $('cheer-input').value = ''; toast('💬 Message envoyé !'); }
 }
 
 // ------------------------------------------------------- MÉDIAS : fil + visionneuse (partagé)
