@@ -30,12 +30,12 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-// Cadences réseau (ms) — espacées pour ménager la batterie (radio + GPS).
-// Elles sont mises en pause quand l'appli passe en arrière-plan (voir visibilitychange).
-const BROADCAST_MS = 8000;    // diffusion de la position de l'athlète
-const FOLLOW_POLL_MS = 10000; // sondage des athlètes suivis (follower)
-const MATES_POLL_MS = 10000;  // sondage des potes (athlète)
-const INBOX_POLL_MS = 12000;  // encouragements / messages
+// Cadence réseau (ms) — une SEULE boucle par mode réveille la radio à intervalle fixe
+// (diffusion + sondages regroupés au même tick = un seul réveil radio par cycle).
+// - Premier plan normal : NET_FG_MS.
+// - Arrière-plan (écran éteint) ou mode éco : NET_ECO_MS (≈ 1 réveil / minute).
+const NET_FG_MS = 10000;   // premier plan : suivi réactif
+const NET_ECO_MS = 60000;  // arrière-plan / éco : une fois par minute
 
 // Filet de sécurité : au lieu d'une page blanche, toute erreur non gérée
 // s'affiche en bas de l'écran (diagnostic sur le téléphone de l'utilisateur).
@@ -57,7 +57,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -100,7 +100,6 @@ const state = {
   mode: 'athlete',      // 'athlete' | 'follower'
   liveOn: false,        // athlète : diffusion de la position en cours
   myFollowCode: null,   // athlète : code de suivi de SON épreuve (distinct du code d'import)
-  _liveLastSent: 0,     // throttle diffusion
   followCode: null,     // follower : code de suivi de l'athlète ACTIF
   followPseudo: null,   // follower : pseudo
   follows: [],          // follower : liste [{code, name}] des athlètes suivis
@@ -108,7 +107,9 @@ const state = {
   mates: [],            // athlète : potes suivis pendant sa propre course [{code,name,athleteName,avatar}]
   matesBarOpen: true,   // affichage de la barre de noms des potes (repliable via 👀)
   _matesLive: {},       // dernier live par code de pote
-  _matesT: null,        // timer de suivi des potes
+  ecoMode: false,       // athlète : diffusion espacée pour économiser la batterie
+  _netT: null,          // boucle réseau unique de l'athlète (diffusion + sondages alignés)
+  _ecoSeen: {},         // dernier état éco connu par code suivi (pour notifier les transitions)
   _followTracks: {},    // cache code → { rawPoints, name }
   _followLive: {},      // dernier live par code (pastilles des onglets)
   _statusT: null,       // timer de statut multi-athlètes
@@ -119,7 +120,7 @@ const state = {
   lastCheerIso: null,
   newFeed: 0, newInbox: 0,
   myProfile: null,      // athlète connecté : { first_name, last_name, avatar_path }
-  _liveT: null, _mediaT: null, _cheerT: null,
+  _liveT: null, _mediaT: null,
   // persistance
   gpxKey: null,
   cloudCode: null,
@@ -150,6 +151,7 @@ function init() {
   state.follows = loadFollows();
   state.mates = loadMates();
   state.matesBarOpen = localGet('matesBarOpen') !== '0';
+  state.ecoMode = localGet('ecoMode') === '1';
   state.followPseudo = localGet('pseudo') || null;
   updateResumeFollow();
 
@@ -186,11 +188,10 @@ function init() {
   $('cheer-input').addEventListener('focus', () => { $('cheer-note').hidden = false; });
   $('cheer-input').addEventListener('blur', () => { $('cheer-note').hidden = true; });
 
-  // Batterie : coupe les boucles réseau quand l'appli n'est plus visible, les relance au retour.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) pauseNetworkForBackground();
-    else resumeNetworkForForeground();
-  });
+  // Batterie : à chaque bascule avant/arrière-plan, on ré-arme les boucles à la bonne cadence
+  // (arrière-plan : on continue de POUSSER notre position, on met en pause les sondages entrants).
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  $('live-eco').addEventListener('click', toggleEco);
 
   // Compte : inscription / connexion / mes épreuves
   $('auth-login').addEventListener('click', () => doAuth('login'));
@@ -465,7 +466,7 @@ function showWelcomeError(msg) {
 
 // ------------------------------------------------------------------ DÉMARRAGE APP
 function startApp(track) {
-  stopFollowerPolling(); stopInboxPolling(); stopMatesPolling(); // repart propre (changement d'épreuve)
+  stopFollowerPolling(); stopAthleteNet(); state._inboxLoaded = false; // repart propre (changement d'épreuve)
   state.track = track;
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
@@ -543,10 +544,9 @@ function startApp(track) {
   updateStatbar(0);
   setProfileView('full');
   applyModeUI();
-  // athlète déjà partagé : écoute les encouragements + affiche ses photos
-  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) { startInboxPolling(); }
-  // athlète : bandeau (avec 👀 « suivre un pote ») + suivi live des potes ajoutés
-  if (state.mode === 'athlete') { updateLiveBanner(); renderMateBar(); startMatesPolling(); }
+  // athlète : bandeau (👀 « suivre un pote », 🔋 éco) + boucle réseau unique
+  // (diffusion de position + sondages messages/potes, alignés et espacés).
+  if (state.mode === 'athlete') { updateLiveBanner(); renderMateBar(); ensureAthleteNet(); }
   if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
@@ -673,12 +673,12 @@ function onPosition(pos) {
   }
   if (gpsSpeed != null) state.liveSpeed = gpsSpeed;
 
-  // diffusion live pour les followers (position réelle, même hors parcours)
-  if (state.liveOn) maybeBroadcast(lat, lon, proj.along, projected.ele);
+  // La diffusion réelle est portée par la boucle réseau unique (athleteNetTick), alignée
+  // avec les sondages ; ici on ne fait que mémoriser la dernière position connue.
 
   if (!state.onRoute) {
     // Hors parcours : on n'invente pas de position sur la trace.
-    state.lastFix = { lat, lon, acc: accuracy, off: proj.dist, t: now, onRoute: false };
+    state.lastFix = { lat, lon, d: proj.along, ele: projected.ele, acc: accuracy, off: proj.dist, t: now, onRoute: false };
     if (state.map) { state.map.clearCursor(); state.map.setProgress(-1, null); }
     state.profile.setCursor(null);
     $('offroute-banner').hidden = false;
@@ -691,7 +691,7 @@ function onPosition(pos) {
   // Sur le parcours : suivi normal.
   $('offroute-banner').hidden = true;
   state.hint = proj.index;
-  state.lastFix = { lat, lon, d: proj.along, index: proj.index, acc: accuracy, off: proj.dist, t: now, onRoute: true };
+  state.lastFix = { lat, lon, d: proj.along, ele: projected.ele, index: proj.index, acc: accuracy, off: proj.dist, t: now, onRoute: true };
   if (gpsSpeed == null) updateLiveSpeedFromTrack(proj.along, now);
 
   if (state.map) {
@@ -1736,7 +1736,7 @@ function applyModeUI() {
   const ab = document.querySelector('.actionbar');
   if (ab) ab.hidden = follower;
   $('cheer-wrap').hidden = !follower;
-  if (follower) stopMatesPolling(); // le suivi des potes est propre au mode athlète
+  if (follower) stopAthleteNet(); // la boucle réseau athlète (diffusion/potes/messages) est propre au mode athlète
   if (!follower) updateLiveBanner();
 }
 
@@ -1769,7 +1769,8 @@ async function ensureCloudCode() {
   state.cloudCode = code;
   localSet('code:' + state.gpxKey, code);
   const el = $('cloud-code'); if (el) el.textContent = code;
-  startInboxPolling(); // dès que la course est partagée, on écoute les encouragements
+  state._inboxLoaded = false;
+  ensureAthleteNet(); // dès que la course est partagée, on écoute les encouragements
   updateLiveBanner();  // fait apparaître le bandeau (partage · photos · messages)
   return code;
 }
@@ -1798,10 +1799,9 @@ async function startLiveBroadcast() {
   let fc;
   try { fc = await ensureFollowCode(); } catch (_) { toast('Impossible de démarrer le live (réseau ?).'); return; }
   state.liveOn = true;
-  state._liveLastSent = 0;
-  broadcastPosition(fc, { athlete_name: myDisplayName(), active: true }).catch(() => {});
+  broadcastNow();          // première position tout de suite
   ensureNotifyPermission();
-  startInboxPolling();
+  ensureAthleteNet();      // (re)démarre la boucle réseau unique
   updateLiveBanner();
   toast(`🔴 Live activé · partage le code de suivi ${fc} à tes supporters.`);
 }
@@ -1809,19 +1809,22 @@ function stopLiveBroadcast() {
   if (!state.liveOn) return;
   state.liveOn = false;
   if (state.myFollowCode) setLiveActive(state.myFollowCode, false).catch(() => {});
-  stopInboxPolling();
+  ensureAthleteNet();      // garde les sondages (messages/potes) si besoin, sinon s'arrête
   updateLiveBanner();
 }
-function maybeBroadcast(lat, lon, d, ele) {
-  if (!state.myFollowCode) return;
-  const now = Date.now();
-  if (document.hidden) return; // en arrière-plan : on ne réveille pas la radio
-  if (now - state._liveLastSent < BROADCAST_MS) return;
-  state._liveLastSent = now;
-  broadcastPosition(state.myFollowCode, {
-    athlete_name: myDisplayName(),
-    lat, lon, d, ele, speed: state.liveSpeed || 0, active: true,
-  }).catch(() => {});
+/** Diffuse la dernière position connue de l'athlète (portée par la boucle réseau). */
+function broadcastNow() {
+  const fc = state.myFollowCode;
+  if (!fc || !state.liveOn) return;
+  const payload = { athlete_name: myDisplayName(), active: true, eco: !!state.ecoMode };
+  const fix = state.lastFix;
+  if (fix && fix.lat != null) {
+    payload.lat = fix.lat; payload.lon = fix.lon;
+    if (fix.d != null) payload.d = fix.d;
+    if (fix.ele != null) payload.ele = fix.ele;
+    payload.speed = state.liveSpeed || 0;
+  }
+  broadcastPosition(fc, payload).catch(() => {});
 }
 function updateLiveBanner() {
   if (state.mode === 'follower') return;
@@ -1836,13 +1839,15 @@ function updateLiveBanner() {
   $('live-share').hidden = !shared;
   $('live-inbox').hidden = !shared;
   $('live-feed').hidden = !shared;
+  updateEcoUI();
   const suffix = state.myFollowCode ? ` · suivi ${state.myFollowCode}` : '';
+  const eco = state.ecoMode ? ' · 🔋 éco' : '';
   if (!shared) {
     b.classList.add('offline');
     $('live-text').textContent = 'Prêt · 👀 pour suivre un pote';
   } else if (state.liveOn) {
     b.classList.remove('offline');
-    $('live-text').textContent = `🔴 En live${suffix}`;
+    $('live-text').textContent = `🔴 En live${suffix}${eco}`;
   } else {
     b.classList.add('offline');
     $('live-text').textContent = `Partagé${suffix || ' · appuie sur 🔗 pour le code de suivi'}`;
@@ -1885,14 +1890,37 @@ async function onMediaPicked(e) {
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
 }
 
-// ------------------------------------------------------- ATHLÈTE : boîte de réception
-function startInboxPolling() {
-  stopInboxPolling();
-  state._inboxLoaded = false;
-  pollInbox();
-  state._cheerT = setInterval(pollInbox, INBOX_POLL_MS);
+// ------------------------------------------------------- ATHLÈTE : boucle réseau unique (batterie)
+// Une seule boucle réveille la radio à intervalle fixe et regroupe : diffusion de NOTRE position
+// (poursuivie même en arrière-plan) + sondages entrants (potes, messages) mis en pause hors premier plan.
+function athleteNetPeriod() { return (state.ecoMode || document.hidden) ? NET_ECO_MS : NET_FG_MS; }
+function athleteNetNeeded() {
+  return state.mode === 'athlete' && (state.liveOn || state.mates.length > 0 || !!state.myFollowCode);
 }
-function stopInboxPolling() { if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; } }
+function startAthleteNet() {
+  stopAthleteNet();
+  athleteNetTick();
+  state._netT = setInterval(athleteNetTick, athleteNetPeriod());
+}
+function stopAthleteNet() { if (state._netT) { clearInterval(state._netT); state._netT = null; } }
+/** Ré-arme la boucle avec la cadence courante (après bascule avant/arrière-plan ou éco). */
+function restartAthleteNet() { if (state._netT) startAthleteNet(); }
+/** Démarre/arrête la boucle selon les besoins (live, potes, ou messages à écouter). */
+function ensureAthleteNet() {
+  if (athleteNetNeeded()) { if (!state._netT) startAthleteNet(); }
+  else stopAthleteNet();
+  updateEcoUI();
+}
+async function athleteNetTick() {
+  if (state.mode !== 'athlete') { stopAthleteNet(); return; }
+  // 1) POUSSER notre position — même écran éteint (sinon la position se fige pour les followers)
+  if (state.liveOn) broadcastNow();
+  // 2) sondages ENTRANTS (potes + messages) — en pause quand l'appli n'est pas au premier plan
+  if (!document.hidden) {
+    if (state.myFollowCode) pollInbox();
+    if (state.mates.length) pollMates();
+  }
+}
 async function pollInbox() {
   const fc = state.myFollowCode;
   if (!fc) return; // pas encore de code de suivi → rien à écouter
@@ -1936,7 +1964,7 @@ function updateInboxBadge() {
 async function openInbox() {
   if (state.mode !== 'follower' && !state.cloudCode) { toast('Partage ta course (Live ou ☁️) pour recevoir des messages.'); return; }
   let fc = state.myFollowCode;
-  if (!fc && state.mode === 'athlete') { try { fc = await ensureFollowCode(); startInboxPolling(); } catch (_) { /* ignore */ } }
+  if (!fc && state.mode === 'athlete') { try { fc = await ensureFollowCode(); ensureAthleteNet(); } catch (_) { /* ignore */ } }
   state.newInbox = 0; updateInboxBadge();
   let list = state._cheers;
   if (!list && fc) { try { list = await fetchCheers(fc); } catch (_) { list = []; } }
@@ -2214,8 +2242,9 @@ function renderFollowTabs() {
   el.innerHTML = state.follows.map((f, i) => {
     const live = state._followLive[f.code];
     const on = live && live.active && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
+    const eco = (live && live.eco) ? '🔋 ' : '';
     return `<button class="ftab${i === state.followActive ? ' active' : ''}" data-i="${i}">` +
-      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${escapeHtml(f.athleteName || f.name || f.code)}` +
+      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${eco}${escapeHtml(f.athleteName || f.name || f.code)}` +
       `<span class="ft-x" data-x="${i}" title="Retirer">✕</span></button>`;
   }).join('') + `<button class="ftab-add" data-add="1" title="Suivre un autre athlète">＋</button>`;
 }
@@ -2262,9 +2291,10 @@ function renderMateBar() {
   const chips = state.mates.map((m, i) => {
     const live = state._matesLive[m.code];
     const on = live && live.active && live.updated_at && (now - new Date(live.updated_at).getTime() < 120000);
+    const eco = (live && live.eco) ? '🔋 ' : '';
     const nm = (m.athleteName || m.name || m.code).trim();
     return `<button class="ftab" data-mate="${i}">` +
-      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${escapeHtml(nm)}` +
+      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${eco}${escapeHtml(nm)}` +
       `<span class="ft-x" data-mx="${i}" title="Retirer">✕</span></button>`;
   }).join('');
   el.innerHTML = chips + `<button class="ftab-add" data-mateadd="1" title="Suivre un autre pote">＋</button>`;
@@ -2294,15 +2324,15 @@ async function addMate(code) {
   saveMates();
   state.matesBarOpen = true; localSet('matesBarOpen', '1'); // on déplie pour voir le nouveau pote
   renderMateBar();
-  startMatesPolling();
+  ensureAthleteNet();
   toast(`👀 Tu suis ${aName || row.name || 'ton pote'} sur la course.`);
 }
 function removeMate(i) {
   const m = state.mates[i]; if (!m) return;
   if (!confirm(`Ne plus suivre « ${(m.athleteName || m.name || m.code)} » ?`)) return;
   state.mates.splice(i, 1); saveMates();
-  delete state._matesLive[m.code];
-  if (!state.mates.length) stopMatesPolling();
+  delete state._matesLive[m.code]; delete state._ecoSeen[m.code];
+  ensureAthleteNet();
   renderMateBar();
   renderMates();
 }
@@ -2312,40 +2342,53 @@ function focusMate(i) {
   if (live && live.lat != null && state.map) { state.map.panTo(live.lat, live.lon); toast(`📍 ${(m.athleteName || m.name || 'Pote')}`); }
   else toast('Position pas encore reçue pour ce pote.');
 }
-function startMatesPolling() {
-  if (state._matesT || state.mode !== 'athlete' || !state.mates.length) return;
-  pollMates();
-  state._matesT = setInterval(pollMates, MATES_POLL_MS);
-}
-function stopMatesPolling() {
-  if (state._matesT) { clearInterval(state._matesT); state._matesT = null; }
-}
 
-// --- Économie batterie : suspend les boucles réseau hors premier plan ---
-/** Coupe uniquement les timers réseau (sans démonter la carte ni la géoloc). */
-function pauseNetworkForBackground() {
-  if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
-  if (state._matesT) { clearInterval(state._matesT); state._matesT = null; }
-  if (state._cheerT) { clearInterval(state._cheerT); state._cheerT = null; }
-}
-/** Relance les boucles pertinentes au retour au premier plan (mise à jour immédiate). */
-function resumeNetworkForForeground() {
+// --- Batterie : bascule avant/arrière-plan + mode éco ---
+function onVisibilityChange() {
   if (state.mode === 'follower') {
-    if (state.follows.length && !state._liveT) { pollFollower(); state._liveT = setInterval(pollFollower, FOLLOW_POLL_MS); }
-  } else if (state.mode === 'athlete') {
-    if (state.mates.length && !state._matesT) { pollMates(); state._matesT = setInterval(pollMates, MATES_POLL_MS); }
-    if (state.myFollowCode && !state._cheerT) { pollInbox(); state._cheerT = setInterval(pollInbox, INBOX_POLL_MS); }
+    // Follower : rien à pousser → on suspend complètement hors premier plan.
+    if (document.hidden) pauseFollowerLoop(); else resumeFollowerLoop();
+  } else {
+    // Athlète : la boucle continue (elle POUSSE encore la position) mais passe à ~1×/min.
+    restartAthleteNet();
   }
 }
+function toggleEco() {
+  state.ecoMode = !state.ecoMode;
+  localSet('ecoMode', state.ecoMode ? '1' : '0');
+  restartAthleteNet();               // applique la cadence éco (1×/min)
+  if (state.liveOn) broadcastNow();  // prévient tout de suite followers & potes
+  updateEcoUI();
+  updateLiveBanner();
+  toast(state.ecoMode
+    ? '🔋 Mode éco activé · position diffusée 1×/min. Tes suiveurs sont prévenus.'
+    : '⚡ Mode éco désactivé · diffusion normale.');
+}
+function updateEcoUI() {
+  const btn = $('live-eco');
+  if (!btn) return;
+  btn.hidden = state.mode !== 'athlete';
+  btn.classList.toggle('on', !!state.ecoMode);
+  btn.title = state.ecoMode
+    ? 'Mode éco actif (position 1×/min) — toucher pour désactiver'
+    : 'Activer le mode éco batterie';
+}
 async function pollMates() {
-  if (state.mode !== 'athlete' || !state.mates.length) { stopMatesPolling(); return; }
+  if (state.mode !== 'athlete' || !state.mates.length) return;
   try {
     await Promise.all(state.mates.map(async (m) => {
-      try { const live = await fetchLive(m.code); if (live) state._matesLive[m.code] = live; } catch (_) { /* ignore */ }
+      try { const live = await fetchLive(m.code); if (live) { state._matesLive[m.code] = live; noteEcoTransition(m.code, live, (m.athleteName || m.name || 'Ton pote')); } } catch (_) { /* ignore */ }
     }));
     renderMates();
     renderMateBar();
   } catch (_) { /* réseau : prochain tick */ }
+}
+/** Notifie une seule fois quand un athlète suivi passe en mode éco (pour rassurer). */
+function noteEcoTransition(code, live, who) {
+  const now = !!(live && live.eco);
+  const prev = state._ecoSeen[code];
+  if (prev === false && now) notify('🔋 ' + who, 'est en mode éco : position moins fréquente, pas d’inquiétude.');
+  state._ecoSeen[code] = now;
 }
 /** Marqueurs colorés des potes sur la carte de l'athlète (en plus de sa propre position). */
 function renderMates() {
@@ -2359,7 +2402,7 @@ function renderMates() {
     const nm = (m.athleteName || m.name || m.code).trim();
     return {
       code: m.code, lat: live.lat, lon: live.lon,
-      name: escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
+      name: (live.eco ? '🔋 ' : '') + escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
       avatar: m.avatar ? avatarUrl(m.avatar) : null,
       color: athColor(i), active: on, focused: false,
     };
@@ -2409,13 +2452,13 @@ function toggleFollowerGeo() {
     if (state.map) state.map.setFollowerPosition(state.followerPos.lat, state.followerPos.lon);
     $('follow-geo').classList.add('active');
     updateFollowerBanner(state.athleteFix);
-  }, () => { toast('Position refusée ou indisponible.'); }, { enableHighAccuracy: false, maximumAge: 15000, timeout: 20000 });
+  }, () => { toast('Position refusée ou indisponible.'); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
   toast('📍 Activation de ta position…');
 }
 function startFollowerPolling() {
   stopFollowerPolling();
   pollFollower();
-  state._liveT = setInterval(pollFollower, FOLLOW_POLL_MS);
+  state._liveT = setInterval(pollFollower, NET_FG_MS);
 }
 function stopFollowerPolling() {
   if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
@@ -2424,6 +2467,15 @@ function stopFollowerPolling() {
     try { navigator.geolocation.clearWatch(state.followerWatchId); } catch (_) { /* ignore */ }
     state.followerWatchId = null; state.followerPos = null; state._lastDist = null;
     if (state.map) state.map.clearFollowerPosition();
+  }
+}
+// Batterie : en arrière-plan, le follower ne regarde pas → on coupe juste le timer
+// (sans démonter la carte ni sa géoloc), et on relance au retour au premier plan.
+function pauseFollowerLoop() { if (state._liveT) { clearInterval(state._liveT); state._liveT = null; } }
+function resumeFollowerLoop() {
+  if (state.mode === 'follower' && state.follows.length && !state._liveT) {
+    pollFollower();
+    state._liveT = setInterval(pollFollower, NET_FG_MS);
   }
 }
 async function pollFollower() {
@@ -2437,7 +2489,10 @@ async function pollFollower() {
     }
     // positions de TOUS les athlètes suivis (affichés sur la même carte)
     await Promise.all(state.follows.map(async (f) => {
-      try { const live = await fetchLive(f.code); if (live) state._followLive[f.code] = live; } catch (_) { /* ignore */ }
+      try {
+        const live = await fetchLive(f.code);
+        if (live) { state._followLive[f.code] = live; noteEcoTransition(f.code, live, (f.athleteName || f.name || 'L’athlète')); }
+      } catch (_) { /* ignore */ }
     }));
     renderAllAthletes();
     renderFollowTabs();
@@ -2468,7 +2523,7 @@ function renderAllAthletes() {
     const nm = (f.athleteName || f.name || f.code).trim();
     return {
       code: f.code, lat: live.lat, lon: live.lon,
-      name: escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
+      name: (live.eco ? '🔋 ' : '') + escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
       avatar: f.avatar ? avatarUrl(f.avatar) : null,
       color: athColor(i), active: on, focused: f.code === state.followCode,
     };
@@ -2482,6 +2537,7 @@ function updateFollowerBanner(live) {
   const b = $('live-banner');
   b.hidden = false;
   $('live-mates').hidden = true;  // (athlète uniquement)
+  $('live-eco').hidden = true;    // (athlète uniquement)
   $('live-feed').hidden = false;
   $('live-inbox').hidden = false; // 💬 : messages laissés par l'athlète
   $('live-share').hidden = false;
@@ -2490,7 +2546,11 @@ function updateFollowerBanner(live) {
   const name = (live && (live.athlete_name || '').trim())
     || (focused && (focused.athleteName || '').trim())
     || 'Athlète';
-  const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
+  // en mode éco l'athlète diffuse ~1×/min : on élargit la fenêtre « en ligne » pour ne pas
+  // le croire hors ligne entre deux positions.
+  const freshWin = (live && live.eco) ? 240000 : 120000;
+  const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < freshWin);
+  const ecoTxt = (live && live.eco) ? ' · 🔋 éco' : '';
   // distance athlète ↔ moi (si le follower a activé sa position)
   let meTxt = '';
   if (state.followerPos && live && live.lat != null) {
@@ -2506,7 +2566,7 @@ function updateFollowerBanner(live) {
   if (live && live.active && fresh) {
     b.classList.remove('offline');
     const km = live.d != null ? ` · ${(live.d / 1000).toFixed(1)} km` : '';
-    $('live-text').textContent = `🔴 ${name}${km}${meTxt}`;
+    $('live-text').textContent = `🔴 ${name}${km}${ecoTxt}${meTxt}`;
   } else {
     b.classList.add('offline');
     $('live-text').textContent = (live ? `${name} · hors ligne` : `${name} · pas encore parti`) + meTxt;
