@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -665,10 +665,13 @@ function onPosition(pos) {
 
   if (state.map) {
     state.map.setProgress(proj.index, projected);
-    state.map.highlightCursor(projected.lat, projected.lon);
+    if (!cursorHeld()) state.map.highlightCursor(projected.lat, projected.lon);
   }
-  state.profile.setCursor(proj.along);
-  if (state.follow && state.profile.isZoomed()) state.profile.centerOn(proj.along);
+  // Pendant l'inspection d'un point (fiche ouverte), on ne recolle pas la barre à la position GPS.
+  if (!cursorHeld()) {
+    state.profile.setCursor(proj.along);
+    if (state.follow && state.profile.isZoomed()) state.profile.centerOn(proj.along);
+  }
 
   updateStatbar(proj.along, proj.dist);
   updateClimbBanner(proj.along);
@@ -858,6 +861,10 @@ function onScrub(d, pt) {
   if (state.map) state.map.highlightCursor(p.lat, p.lon);
   if (!state.lastFix || !state.lastFix.onRoute) state.profile.setCursor(d);
 }
+
+/** Vrai quand l'utilisateur inspecte un point (fiche ouverte) : on gèle alors la
+    barre jaune pour qu'elle ne « recolle » pas à la position GPS pendant le live. */
+function cursorHeld() { const el = $('wpt-info'); return !!(el && !el.hidden); }
 
 // ------------------------------------------------------------------ POINTS DE PASSAGE MANUELS
 function onMapTap(latlng) {
@@ -2212,7 +2219,7 @@ function renderAthletePosition(live) {
   const d = live.d != null ? live.d : proj.along;
   state.lastFix = { lat: live.lat, lon: live.lon, d, index: proj.index, onRoute: true, t: Date.now() };
   state.liveSpeed = live.speed || 0;
-  state.profile.setCursor(d);
+  if (!cursorHeld()) state.profile.setCursor(d); // gel pendant l'inspection d'un point
   updateStatbar(d, 0);
   updateClimbBanner(d);
 }
