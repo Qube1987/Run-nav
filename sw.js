@@ -3,7 +3,7 @@
    - Tuiles de carte : cache runtime plafonné (les zones déjà vues restent dispo).
    - Supabase & autres POST : réseau uniquement (jamais mis en cache). */
 
-const VERSION = 'v61';
+const VERSION = 'v62';
 const SHELL_CACHE = `runnav-shell-${VERSION}`;
 const TILE_CACHE = `runnav-tiles-${VERSION}`;
 const TILE_MAX = 800;

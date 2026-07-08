@@ -140,6 +140,7 @@ export async function uploadMedia(code, file, meta) {
   const row = {
     code, kind: isVideo ? 'video' : 'photo', path,
     caption: (meta.caption || '').trim() || null,
+    author: (meta.author || '').trim() || null,
     lat: meta.lat, lon: meta.lon, d: meta.d,
   };
   const res = await apiFetch('/rest/v1/runnav_media', {

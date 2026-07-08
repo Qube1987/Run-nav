@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -178,6 +178,11 @@ function init() {
   const salonSend = () => { const i = $('bcast-input'); sendSalon({ text: i.value }).then((ok) => { if (ok) i.value = ''; }); };
   $('bcast-send').addEventListener('click', salonSend);
   $('bcast-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') salonSend(); });
+  // clic sur une miniature média dans le fil du salon → visionneuse plein écran
+  $('inbox-list').addEventListener('click', (e) => {
+    const md = e.target.closest('[data-media]');
+    if (md) openMediaFromRow(findMedia(md.dataset.media));
+  });
   document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
   document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
   document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
@@ -1890,9 +1895,9 @@ async function onMediaPicked(e) {
   const { lat, lon, d } = mediaPosition();
   toast('📤 Envoi du média…');
   try {
-    await uploadMedia(code, file, { caption, lat, lon, d });
+    await uploadMedia(code, file, { caption, lat, lon, d, author: myChatName() });
     toast('📸 Média publié dans le salon !');
-    try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
+    try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
 }
 /** Position à géotaguer pour un média : l'athlète → sa position ; le follower → la sienne
@@ -1970,7 +1975,7 @@ function salonOpen() { const s = $('inbox-sheet'); return s && !s.hidden; }
 /** L'athlète rafraîchit aussi SES propres médias (marqueurs carte/profil). */
 async function refreshOwnMedia() {
   const code = salonCode(); if (!code) return;
-  try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
+  try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
 }
 /** Sondage du salon : messages + participants (identique athlète / follower). */
 async function pollSalon() {
@@ -2016,6 +2021,7 @@ async function openSalon() {
   state.newSalon = 0; updateSalonBadge();
   let list = state._salon;
   if (!list) { try { list = await fetchCheers(code); state._salon = list; } catch (_) { list = []; } }
+  if (!state._media) { try { state._media = await fetchMedia(code); } catch (_) { /* ignore */ } }
   renderSalon(list || []);
   let parts = state._participants;
   if (!parts) { try { parts = await fetchFollowers(code); state._participants = parts; } catch (_) { parts = []; } }
@@ -2041,9 +2047,27 @@ function renderParticipants(list) {
 function renderSalon(list) {
   list = list || [];
   const me = myChatName();
-  $('inbox-empty').hidden = list.length > 0;
-  const rows = list.slice().reverse(); // du plus ancien au plus récent
-  $('inbox-list').innerHTML = rows.map((c) => {
+  // fil unique : messages + médias mêlés, dans l'ordre chronologique
+  const items = list.map((c) => ({ kind: 'msg', t: c.created_at, c }))
+    .concat((state._media || []).map((m) => ({ kind: 'media', t: m.created_at, m })))
+    .sort((a, b) => new Date(a.t) - new Date(b.t));
+  $('inbox-empty').hidden = items.length > 0;
+  $('inbox-list').innerHTML = items.map((it) => {
+    if (it.kind === 'media') {
+      const m = it.m;
+      const url = m.url || mediaUrl(m.path);
+      const mine = m.author && m.author === me;
+      const thumb = m.kind === 'video'
+        ? `<span class="cm-thumb" style="background-image:url('${String(url).replace(/'/g, '%27')}#t=0.1')"><span class="cm-play">▶</span></span>`
+        : `<span class="cm-thumb" style="background-image:url('${String(url).replace(/'/g, '%27')}')"></span>`;
+      return `<div class="chat-row media${mine ? ' me' : ''}" data-media="${escAttr(m.id)}">
+        <span class="chat-who">📷 ${escapeHtml(m.author || 'Anonyme')}</span>
+        ${thumb}
+        ${m.caption ? `<span class="chat-txt">${escapeHtml(m.caption)}</span>` : ''}
+        <span class="chat-when">${fmtAgo(m.created_at)}</span>
+      </div>`;
+    }
+    const c = it.c;
     const mine = c.author === me;
     const ath = c.sender === 'athlete';
     return `<div class="chat-row${mine ? ' me' : ''}${ath ? ' ath' : ''}">
@@ -2554,6 +2578,7 @@ function handleFollowerMedia(media) {
   state._mediaLoaded = true;
   refreshMediaMarkers(media);
   updateFeedBadge();
+  if (salonOpen()) renderSalon(state._salon || []);
 }
 
 /** Place les vignettes sur la carte + le profil et met à jour le bandeau photos. */
