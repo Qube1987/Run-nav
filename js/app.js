@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -122,8 +122,9 @@ const state = {
   _salon: null,         // messages du salon (les plus récents d'abord)
   _participants: null,  // présences dans le salon
   seenSalon: new Set(), // ids de messages déjà vus (notif)
-  newSalon: 0,          // messages non lus
-  _salonLoaded: false, _presenceAt: 0,
+  seenSalonMedia: new Set(), // ids de médias déjà vus dans le salon
+  newSalon: 0,          // éléments non lus dans le salon (messages + médias)
+  _salonLoaded: false, _salonMediaLoaded: false, _presenceAt: 0,
   newFeed: 0,
   myProfile: null,      // athlète connecté : { first_name, last_name, avatar_path }
   _liveT: null, _mediaT: null,
@@ -477,7 +478,7 @@ function showWelcomeError(msg) {
 
 // ------------------------------------------------------------------ DÉMARRAGE APP
 function startApp(track) {
-  stopFollowerPolling(); stopAthleteNet(); state._salonLoaded = false; // repart propre (changement d'épreuve)
+  stopFollowerPolling(); stopAthleteNet(); state._salonLoaded = false; state._salonMediaLoaded = false; // repart propre (changement d'épreuve)
   state.track = track;
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
@@ -1897,7 +1898,7 @@ async function onMediaPicked(e) {
   try {
     await uploadMedia(code, file, { caption, lat, lon, d, author: myChatName() });
     toast('📸 Média publié dans le salon !');
-    try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
+    try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); noteSalonMedia(media); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
 }
 /** Position à géotaguer pour un média : l'athlète → sa position ; le follower → la sienne
@@ -1975,7 +1976,7 @@ function salonOpen() { const s = $('inbox-sheet'); return s && !s.hidden; }
 /** L'athlète rafraîchit aussi SES propres médias (marqueurs carte/profil). */
 async function refreshOwnMedia() {
   const code = salonCode(); if (!code) return;
-  try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
+  try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); noteSalonMedia(media); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
 }
 /** Sondage du salon : messages + participants (identique athlète / follower). */
 async function pollSalon() {
@@ -2008,10 +2009,23 @@ function handleSalon(list, isSelf) {
   if (salonOpen()) renderSalon(list);
 }
 function updateSalonBadge() {
-  $('inbox-count').textContent = (state._salon || []).length;
+  const total = (state._salon || []).length + (state._media || []).length; // messages + photos/vidéos
+  $('inbox-count').textContent = total;
   $('live-inbox').classList.toggle('has-new', (state.newSalon || 0) > 0);
   const b = $('act-inbox-badge');
   if (b) { b.textContent = state.newSalon || 0; b.hidden = !(state.newSalon > 0); }
+}
+/** Signale les nouveaux médias du salon (comme les messages) pour le compteur / la pastille. */
+function noteSalonMedia(list) {
+  list = list || [];
+  const me = myChatName();
+  if (state._salonMediaLoaded) {
+    const news = list.filter((m) => !state.seenSalonMedia.has(m.id) && (m.author || '') !== me);
+    if (news.length) state.newSalon = (state.newSalon || 0) + news.length;
+  }
+  list.forEach((m) => state.seenSalonMedia.add(m.id));
+  state._salonMediaLoaded = true;
+  updateSalonBadge();
 }
 async function openSalon() {
   // l'athlète a besoin d'un code de suivi pour que d'autres puissent rejoindre son salon
@@ -2201,6 +2215,7 @@ function enterFollowerMode() {
   state.newFeed = 0; state._media = null;
   // salon : on repart propre à chaque changement d'athlète focalisé (salon potentiellement différent)
   state.seenSalon = new Set(); state._salonLoaded = false; state.newSalon = 0; state._salon = null; state._participants = null; state._presenceAt = 0;
+  state.seenSalonMedia = new Set(); state._salonMediaLoaded = false;
   refreshMediaMarkers([]);
   ensureNotifyPermission();
   $('live-banner').hidden = false;
@@ -2578,6 +2593,7 @@ function handleFollowerMedia(media) {
   state._mediaLoaded = true;
   refreshMediaMarkers(media);
   updateFeedBadge();
+  noteSalonMedia(media);
   if (salonOpen()) renderSalon(state._salon || []);
 }
 
