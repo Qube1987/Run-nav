@@ -17,7 +17,7 @@ import {
   cloudListRaces, cloudDeleteRace,
 } from './storage.js';
 import {
-  isLoggedIn, currentUser, signup, login, logout,
+  isLoggedIn, currentUser, currentUserId, signup, login, logout,
 } from './auth.js';
 import {
   broadcastPosition, setLiveActive, fetchLive,
@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -186,6 +186,7 @@ function init() {
   $('follow-geo').addEventListener('click', toggleFollowerGeo);
   // Follower : barre rapide d'envoi dans le salon
   $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
+  $('cheer-photo').addEventListener('click', () => $('media-input').click());
   $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
   $('cheer-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCheer({ text: $('cheer-input').value }); });
   // l'avertissement de visibilité ne s'affiche (en surimpression) que lorsque le
@@ -1875,25 +1876,43 @@ async function shareLive() {
 }
 
 // ------------------------------------------------------- ATHLÈTE : médias
+// Média géolocalisé partagé dans le salon de l'épreuve — ouvert à l'athlète ET aux followers.
 async function onMediaPicked(e) {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  if (!isLoggedIn()) { toast('Connecte-toi pour poster une photo/vidéo.'); return; }
   if (file.size > 50 * 1024 * 1024) { toast('Fichier trop lourd (50 Mo max).'); return; }
-  let code;
-  try { code = await ensureFollowCode(); } catch (_) { toast('Impossible (réseau ?).'); return; }
+  // clé = salon de l'épreuve ; l'athlète a besoin d'un code de suivi pour que les autres le rejoignent
+  if (state.mode === 'athlete' && !state.myFollowCode) { try { await ensureFollowCode(); ensureAthleteNet(); } catch (_) { /* ignore */ } }
+  const code = salonCode();
+  if (!code) { toast('Média indisponible pour l’instant.'); return; }
   const caption = prompt('Légende (optionnel) :', '') || '';
-  const d = (state.lastFix && state.lastFix.d != null) ? state.lastFix.d : (state.scrubD || 0);
-  const p = pointAtDistance(state.track.points, d);
-  const lat = (state.lastFix && state.lastFix.lat != null) ? state.lastFix.lat : p.lat;
-  const lon = (state.lastFix && state.lastFix.lon != null) ? state.lastFix.lon : p.lon;
+  const { lat, lon, d } = mediaPosition();
   toast('📤 Envoi du média…');
   try {
     await uploadMedia(code, file, { caption, lat, lon, d });
-    toast('📸 Média publié ! Tes followers seront notifiés.');
+    toast('📸 Média publié dans le salon !');
     try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
+}
+/** Position à géotaguer pour un média : l'athlète → sa position ; le follower → la sienne
+    (si géoloc activée), sinon la dernière position de l'athlète suivi, sinon un point du parcours. */
+function mediaPosition() {
+  let lat = null, lon = null, d = null;
+  if (state.mode === 'follower') {
+    if (state.followerPos) {
+      lat = state.followerPos.lat; lon = state.followerPos.lon;
+      try { d = projectOnTrack(state.followerPos, state.track.points, 0).along; } catch (_) { /* ignore */ }
+    } else {
+      const live = state._followLive[state.followCode];
+      if (live && live.lat != null) { lat = live.lat; lon = live.lon; d = live.d != null ? live.d : null; }
+    }
+  } else if (state.lastFix && state.lastFix.lat != null) {
+    lat = state.lastFix.lat; lon = state.lastFix.lon; d = state.lastFix.d;
+  }
+  if (d == null) d = state.scrubD || 0;
+  if (lat == null) { const p = pointAtDistance(state.track.points, d); lat = p.lat; lon = p.lon; }
+  return { lat, lon, d };
 }
 
 // ------------------------------------------------------- ATHLÈTE : boucle réseau unique (batterie)
@@ -1950,8 +1969,8 @@ function salonOpen() { const s = $('inbox-sheet'); return s && !s.hidden; }
 
 /** L'athlète rafraîchit aussi SES propres médias (marqueurs carte/profil). */
 async function refreshOwnMedia() {
-  const fc = state.myFollowCode; if (!fc) return;
-  try { const media = await fetchMedia(fc); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
+  const code = salonCode(); if (!code) return;
+  try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
 }
 /** Sondage du salon : messages + participants (identique athlète / follower). */
 async function pollSalon() {
@@ -2434,8 +2453,8 @@ async function pollFollower() {
     const active = state._followLive[state.followCode];
     updateFollowerBanner(active || null);
     if (active && active.lat != null) renderAthletePosition(active);
-    const media = await fetchMedia(state.followCode);
-    handleFollowerMedia(media);
+    const sc = salonCode();
+    if (sc) { const media = await fetchMedia(sc); handleFollowerMedia(media); }
     // salon de groupe (messages partagés par tous les liés à l'épreuve)
     await pollSalon();
   } catch (_) { /* réseau : on réessaiera au prochain tick */ }
@@ -2553,7 +2572,7 @@ function openMediaFromRow(md) {
     ? `<video src="${url}" controls autoplay playsinline></video>`
     : `<img src="${url}" alt="">`;
   $('mv-cap').textContent = md.caption || '';
-  $('mv-del').hidden = (state.mode !== 'athlete'); // seul l'athlète (propriétaire) supprime
+  $('mv-del').hidden = !canDeleteMedia(md); // on ne supprime que SES propres médias
   $('media-view').hidden = false;
 }
 async function deleteViewedMedia() {
@@ -2569,6 +2588,10 @@ async function deleteViewedMedia() {
     $('media-view').hidden = true; $('mv-body').innerHTML = '';
     toast('Média supprimé.');
   } catch (e) { toast('Suppression impossible (réseau ?).'); }
+}
+/** On ne peut supprimer qu'un média qu'on a soi-même posté (RLS : propriétaire). */
+function canDeleteMedia(md) {
+  return !!(md && state.mode === 'athlete' && md.user_id && md.user_id === currentUserId());
 }
 
 /** Bandeau horizontal de vignettes (mise en évidence des photos sur le suivi). */
@@ -2604,7 +2627,7 @@ function updateFeedBadge() {
 }
 async function openMediaFeed() {
   state.newFeed = 0;
-  const code = state.mode === 'follower' ? state.followCode : state.myFollowCode;
+  const code = salonCode();
   const list = state._media || (code ? await fetchMedia(code) : []);
   state._media = list;
   renderMediaList(list);
@@ -2612,7 +2635,6 @@ async function openMediaFeed() {
   updateFeedBadge();
 }
 function renderMediaList(list) {
-  const owner = state.mode === 'athlete';
   $('media-empty').hidden = list.length > 0;
   $('media-list').innerHTML = list.map((m) => {
     const url = m.url || mediaUrl(m.path);
@@ -2620,7 +2642,7 @@ function renderMediaList(list) {
       ? `<video src="${url}#t=0.1" preload="metadata" muted playsinline></video><span class="mi-play">▶</span>`
       : `<img src="${url}" loading="lazy" alt="">`;
     const cap = m.caption ? `<span class="mi-cap">${escapeHtml(m.caption)}</span>` : '';
-    const del = owner ? `<button class="mi-del" data-del="${escAttr(m.id)}" type="button" title="Supprimer">🗑️</button>` : '';
+    const del = canDeleteMedia(m) ? `<button class="mi-del" data-del="${escAttr(m.id)}" type="button" title="Supprimer">🗑️</button>` : '';
     return `<div class="media-item" data-id="${escAttr(m.id)}">${thumb}${cap}${del}</div>`;
   }).join('');
 }

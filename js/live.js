@@ -124,22 +124,17 @@ export function mediaUrl(path) {
   return `${SB_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 
-/** Envoie un fichier (photo/vidéo) dans le Storage puis crée la ligne géolocalisée. */
+/** Envoie un fichier (photo/vidéo) dans le Storage puis crée la ligne géolocalisée.
+    Ouvert à tous : l'athlète connecté (avec jeton) comme les followers (anonymes). */
 export async function uploadMedia(code, file, meta) {
   const s = getSession();
-  if (!s || !s.access_token) throw new Error('Connecte-toi pour poster un média.');
   const isVideo = (file.type || '').startsWith('video');
   const ext = (file.name && file.name.includes('.') ? file.name.split('.').pop() : (isVideo ? 'mp4' : 'jpg')).toLowerCase();
   const path = `${code}/${Date.now()}.${ext}`;
+  const headers = { apikey: SB_KEY, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' };
+  if (s && s.access_token) headers.Authorization = `Bearer ${s.access_token}`;
   const up = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
-    method: 'POST',
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${s.access_token}`,
-      'Content-Type': file.type || 'application/octet-stream',
-      'x-upsert': 'true',
-    },
-    body: file,
+    method: 'POST', headers, body: file,
   });
   if (!up.ok) throw new Error('Upload échoué (' + up.status + ')');
   const row = {
