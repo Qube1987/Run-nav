@@ -27,7 +27,10 @@ body { overflow: hidden; }
 /* ============================= ACCUEIL ============================= */
 .welcome {
   height: 100%;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* scrollable : quand le contenu dépasse l'écran on garde l'accès au haut ET au bas.
+     `safe center` centre quand ça tient, mais s'aligne en haut sans rogner sinon. */
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; align-items: center; justify-content: safe center;
   padding: calc(24px + var(--safe-top)) 22px calc(20px + var(--safe-bottom));
   background:
     radial-gradient(1200px 600px at 50% -10%, rgba(255, 90, 60, 0.16), transparent 60%),
@@ -35,6 +38,7 @@ body { overflow: hidden; }
     var(--bg);
   text-align: center;
 }
+.welcome > * { flex-shrink: 0; }
 .welcome-card { width: 100%; max-width: 420px; }
 .brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; }
 .brand-logo { font-size: 34px; }
