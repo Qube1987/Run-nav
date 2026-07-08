@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -99,6 +99,7 @@ const state = {
   follows: [],          // follower : liste [{code, name}] des athlètes suivis
   followActive: 0,      // follower : index de l'athlète affiché
   mates: [],            // athlète : potes suivis pendant sa propre course [{code,name,athleteName,avatar}]
+  matesBarOpen: true,   // affichage de la barre de noms des potes (repliable via 👀)
   _matesLive: {},       // dernier live par code de pote
   _matesT: null,        // timer de suivi des potes
   _followTracks: {},    // cache code → { rawPoints, name }
@@ -141,6 +142,7 @@ function init() {
   $('resume-follow').addEventListener('click', resumeFollowing);
   state.follows = loadFollows();
   state.mates = loadMates();
+  state.matesBarOpen = localGet('matesBarOpen') !== '0';
   state.followPseudo = localGet('pseudo') || null;
   updateResumeFollow();
 
@@ -149,7 +151,7 @@ function init() {
   $('media-input').addEventListener('change', onMediaPicked);
   $('act-inbox').addEventListener('click', openInbox);
   $('live-share').addEventListener('click', shareLive);
-  $('live-mates').addEventListener('click', addMatePrompt);
+  $('live-mates').addEventListener('click', onMatesEyes);
   $('live-inbox').addEventListener('click', () => (state.mode === 'follower' ? openFollowerMessages() : openInbox()));
   $('live-feed').addEventListener('click', openMediaFeed);
   $('media-strip').addEventListener('click', (e) => {
@@ -2218,12 +2220,30 @@ function loadMates() { try { return JSON.parse(localGet('mates') || '[]'); } cat
 function saveMates() { localSet('mates', JSON.stringify(state.mates)); }
 
 /** Barre de potes (mode athlète) : chips + bouton d'ajout, dans #follow-tabs. */
+/** 👀 : sans pote → ajoute ; avec potes → replie/déplie la barre des noms (gain de place). */
+function onMatesEyes() {
+  if (!state.mates.length) { addMatePrompt(); return; }
+  state.matesBarOpen = !state.matesBarOpen;
+  localSet('matesBarOpen', state.matesBarOpen ? '1' : '0');
+  renderMateBar();
+  updateMatesEyes();
+}
+/** Reflète l'état (potes suivis, barre ouverte) sur le bouton 👀 du bandeau. */
+function updateMatesEyes() {
+  const btn = $('live-mates');
+  if (!btn) return;
+  const n = state.mates.length;
+  btn.classList.toggle('on', n > 0 && state.matesBarOpen);
+  btn.title = !n ? 'Suivre un pote sur la course'
+    : (state.matesBarOpen ? 'Masquer les potes suivis' : `Afficher les potes suivis (${n})`);
+}
 function renderMateBar() {
   const el = $('follow-tabs');
   if (!el) return;
   if (state.mode !== 'athlete') return; // le mode follower gère #follow-tabs de son côté
-  // Barre visible seulement quand on suit au moins un pote ; l'ajout se fait via 👀 dans le bandeau.
-  if (!state.mates.length) { el.hidden = true; el.innerHTML = ''; return; }
+  updateMatesEyes();
+  // Barre visible seulement si on suit au moins un pote ET que la barre est dépliée.
+  if (!state.mates.length || !state.matesBarOpen) { el.hidden = true; el.innerHTML = ''; return; }
   const now = Date.now();
   const chips = state.mates.map((m, i) => {
     const live = state._matesLive[m.code];
@@ -2258,6 +2278,7 @@ async function addMate(code) {
   const aName = (row.athlete_name || '').trim() || null;
   state.mates.push({ code, name: row.name || null, athleteName: aName, avatar: row.avatar_path || null });
   saveMates();
+  state.matesBarOpen = true; localSet('matesBarOpen', '1'); // on déplie pour voir le nouveau pote
   renderMateBar();
   startMatesPolling();
   toast(`👀 Tu suis ${aName || row.name || 'ton pote'} sur la course.`);
