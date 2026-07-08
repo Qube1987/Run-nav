@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -118,9 +118,13 @@ const state = {
   athleteFix: null,     // follower : dernière position reçue de l'athlète
   mediaMarks: [],       // marqueurs médias sur le profil
   seenMedia: new Set(), // ids de médias déjà vus (notif)
-  seenCheers: new Set(),// ids d'encouragements déjà vus (notif)
-  lastCheerIso: null,
-  newFeed: 0, newInbox: 0,
+  // Salon de l'épreuve (chat de groupe partagé par tous : athlètes, potes, followers)
+  _salon: null,         // messages du salon (les plus récents d'abord)
+  _participants: null,  // présences dans le salon
+  seenSalon: new Set(), // ids de messages déjà vus (notif)
+  newSalon: 0,          // messages non lus
+  _salonLoaded: false, _presenceAt: 0,
+  newFeed: 0,
   myProfile: null,      // athlète connecté : { first_name, last_name, avatar_path }
   _liveT: null, _mediaT: null,
   // persistance
@@ -160,28 +164,27 @@ function init() {
   // Athlète : média (photo/vidéo), partage, boîte de réception
   $('act-photo').addEventListener('click', () => $('media-input').click());
   $('media-input').addEventListener('change', onMediaPicked);
-  $('act-inbox').addEventListener('click', openInbox);
+  $('act-inbox').addEventListener('click', openSalon);
   $('live-share').addEventListener('click', shareLive);
   $('live-mates').addEventListener('click', onMatesEyes);
-  $('live-inbox').addEventListener('click', () => (state.mode === 'follower' ? openFollowerMessages() : openInbox()));
+  $('live-inbox').addEventListener('click', openSalon);   // salon de groupe (athlète comme follower)
   $('live-feed').addEventListener('click', openMediaFeed);
   $('media-strip').addEventListener('click', (e) => {
     const t = e.target.closest('.ms-thumb');
     if (t) openMediaFromRow(findMedia(t.dataset.id));
   });
   $('mv-del').addEventListener('click', deleteViewedMedia);
-  // Athlète : répondre à un follower (clic sur son message) + message à tous
-  $('inbox-list').addEventListener('click', onInboxListClick);
-  $('bcast-send').addEventListener('click', sendBroadcast);
-  $('bcast-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBroadcast(); });
+  // Salon : champ de saisie commun (message visible de tout le monde)
+  const salonSend = () => { const i = $('bcast-input'); sendSalon({ text: i.value }).then((ok) => { if (ok) i.value = ''; }); };
+  $('bcast-send').addEventListener('click', salonSend);
+  $('bcast-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') salonSend(); });
   document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
   document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
-  document.querySelectorAll('[data-fclose]').forEach((el) => el.addEventListener('click', () => { $('fmsg-sheet').hidden = true; }));
   document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
   $('media-list').addEventListener('click', onMediaListClick);
 
   $('follow-geo').addEventListener('click', toggleFollowerGeo);
-  // Follower : encouragements
+  // Follower : barre rapide d'envoi dans le salon
   $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
   $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
   $('cheer-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCheer({ text: $('cheer-input').value }); });
@@ -468,7 +471,7 @@ function showWelcomeError(msg) {
 
 // ------------------------------------------------------------------ DÉMARRAGE APP
 function startApp(track) {
-  stopFollowerPolling(); stopAthleteNet(); state._inboxLoaded = false; // repart propre (changement d'épreuve)
+  stopFollowerPolling(); stopAthleteNet(); state._salonLoaded = false; // repart propre (changement d'épreuve)
   state.track = track;
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
@@ -1771,8 +1774,8 @@ async function ensureCloudCode() {
   state.cloudCode = code;
   localSet('code:' + state.gpxKey, code);
   const el = $('cloud-code'); if (el) el.textContent = code;
-  state._inboxLoaded = false;
-  ensureAthleteNet(); // dès que la course est partagée, on écoute les encouragements
+  state._salonLoaded = false;
+  ensureAthleteNet(); // dès que la course est partagée, on écoute le salon
   updateLiveBanner();  // fait apparaître le bandeau (partage · photos · messages)
   return code;
 }
@@ -1924,65 +1927,84 @@ async function athleteNetTick() {
   // 2) sondages ENTRANTS (potes + messages) — en pause en arrière-plan ET en mode éco
   //    (en éco on coupe toute la synchro pour économiser un maximum la batterie).
   if (!document.hidden && !state.ecoMode) {
-    if (state.myFollowCode) pollInbox();
+    if (state.myFollowCode || state.mates.length) pollSalon();
+    refreshOwnMedia();
     if (state.mates.length) pollMates();
   }
 }
-async function pollInbox() {
-  const fc = state.myFollowCode;
-  if (!fc) return; // pas encore de code de suivi → rien à écouter
-  let list;
-  try { list = await fetchCheers(fc); } catch (_) { return; }
-  state._cheers = list;
-  const incoming = incomingCheers(list); // messages des followers seulement (pas les miens)
-  if (state._inboxLoaded) {
-    const news = incoming.filter((c) => !state.seenCheers.has(c.id));
+// ------------------------------------------------------- SALON DE L'ÉPREUVE (chat de groupe)
+// Un seul fil partagé par TOUS ceux liés à la même épreuve : l'athlète, les autres athlètes
+// (mêmes copies du GPX), leurs potes et tous les followers. Clé = gpx_key (identifiant d'épreuve
+// commun à toutes les copies + transmis aux followers via runnav_get_by_follow).
+// Broadcast pur : chaque message est visible par tout le monde (plus de messages privés).
+function salonCode() {
+  if (state.mode === 'follower') {
+    const f = state.follows.find((x) => x.code === state.followCode);
+    return (f && f.salon) || null;
+  }
+  return state.gpxKey || null;
+}
+function myChatName() { return state.mode === 'athlete' ? myDisplayName() : (state.followPseudo || 'Supporter'); }
+function salonOpen() { const s = $('inbox-sheet'); return s && !s.hidden; }
+
+/** L'athlète rafraîchit aussi SES propres médias (marqueurs carte/profil). */
+async function refreshOwnMedia() {
+  const fc = state.myFollowCode; if (!fc) return;
+  try { const media = await fetchMedia(fc); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); } catch (_) { /* ignore */ }
+}
+/** Sondage du salon : messages + participants (identique athlète / follower). */
+async function pollSalon() {
+  const code = salonCode();
+  if (!code) return;
+  // présence (~45 s) : chacun (athlète, pote, follower) apparaît dans les participants
+  const now = Date.now();
+  if (now - (state._presenceAt || 0) > 45000) {
+    state._presenceAt = now;
+    registerFollower(code, myChatName()).catch(() => {});
+  }
+  try { handleSalon(await fetchCheers(code), false); } catch (_) { /* réseau */ }
+  try { state._participants = await fetchFollowers(code); if (salonOpen()) renderParticipants(state._participants); } catch (_) { /* ignore */ }
+}
+function handleSalon(list, isSelf) {
+  list = list || [];
+  state._salon = list;
+  const me = myChatName();
+  if (state._salonLoaded && !isSelf) {
+    const news = list.filter((c) => !state.seenSalon.has(c.id) && c.author !== me);
     if (news.length) {
-      state.newInbox += news.length;
+      state.newSalon = (state.newSalon || 0) + news.length;
       const c = news[0];
-      notify('💬 ' + (c.author || 'Supporter'), c.is_like ? 'a envoyé un ❤️' : (c.text || ''));
+      notify('💬 ' + (c.author || ''), c.is_like ? 'a envoyé un ❤️' : (c.text || ''));
     }
   }
-  incoming.forEach((c) => state.seenCheers.add(c.id));
-  state._inboxLoaded = true;
-  // liste de ceux qui te suivent
-  try {
-    state._followers = await fetchFollowers(fc);
-    if ($('inbox-sheet') && !$('inbox-sheet').hidden) renderFollowers(state._followers);
-  } catch (_) { /* ignore */ }
-  if ($('inbox-sheet') && !$('inbox-sheet').hidden) renderInbox(list);
-  updateInboxBadge();
-  // l'athlète voit aussi ses propres médias sur la carte / le profil
-  try {
-    const media = await fetchMedia(fc);
-    state._media = media;
-    refreshMediaMarkers(media);
-    updateFeedBadge();
-  } catch (_) { /* ignore */ }
+  list.forEach((c) => state.seenSalon.add(c.id));
+  state._salonLoaded = true;
+  updateSalonBadge();
+  if (salonOpen()) renderSalon(list);
 }
-function incomingCheers(list) { return (list || []).filter((c) => c.sender !== 'athlete'); }
-function updateInboxBadge() {
-  const n = incomingCheers(state._cheers).length;
-  $('inbox-count').textContent = n;
-  $('live-inbox').classList.toggle('has-new', state.newInbox > 0);
+function updateSalonBadge() {
+  $('inbox-count').textContent = (state._salon || []).length;
+  $('live-inbox').classList.toggle('has-new', (state.newSalon || 0) > 0);
   const b = $('act-inbox-badge');
-  if (b) { b.textContent = state.newInbox; b.hidden = state.newInbox === 0; }
+  if (b) { b.textContent = state.newSalon || 0; b.hidden = !(state.newSalon > 0); }
 }
-async function openInbox() {
-  if (state.mode !== 'follower' && !state.cloudCode) { toast('Partage ta course (Live ou ☁️) pour recevoir des messages.'); return; }
-  let fc = state.myFollowCode;
-  if (!fc && state.mode === 'athlete') { try { fc = await ensureFollowCode(); ensureAthleteNet(); } catch (_) { /* ignore */ } }
-  state.newInbox = 0; updateInboxBadge();
-  let list = state._cheers;
-  if (!list && fc) { try { list = await fetchCheers(fc); } catch (_) { list = []; } }
-  if (!list) list = [];
-  renderInbox(list);
-  let followers = state._followers;
-  if (!followers && fc) { try { followers = await fetchFollowers(fc); state._followers = followers; } catch (_) { followers = []; } }
-  renderFollowers(followers || []);
+async function openSalon() {
+  // l'athlète a besoin d'un code de suivi pour que d'autres puissent rejoindre son salon
+  if (state.mode === 'athlete' && !state.myFollowCode) { try { await ensureFollowCode(); ensureAthleteNet(); } catch (_) { /* ignore */ } }
+  const code = salonCode();
+  if (!code) { toast('Salon indisponible pour l’instant.'); return; }
+  state.newSalon = 0; updateSalonBadge();
+  let list = state._salon;
+  if (!list) { try { list = await fetchCheers(code); state._salon = list; } catch (_) { list = []; } }
+  renderSalon(list || []);
+  let parts = state._participants;
+  if (!parts) { try { parts = await fetchFollowers(code); state._participants = parts; } catch (_) { parts = []; } }
+  renderParticipants(parts || []);
   $('inbox-sheet').hidden = false;
+  // présence immédiate à l'ouverture
+  registerFollower(code, myChatName()).catch(() => {}); state._presenceAt = Date.now();
 }
-function renderFollowers(list) {
+function renderParticipants(list) {
   list = list || [];
   $('followers-count').textContent = list.length;
   $('followers-empty').hidden = list.length > 0;
@@ -1991,131 +2013,41 @@ function renderFollowers(list) {
     const online = f.updated_at && (now - new Date(f.updated_at).getTime() < 150000);
     return `<div class="follower-row">
       <span class="fw-dot${online ? ' on' : ''}"></span>
-      <span class="fw-who">${escapeHtml(f.pseudo || 'Supporter')}</span>
+      <span class="fw-who">${escapeHtml(f.pseudo || 'Anonyme')}</span>
       <span class="fw-when">${online ? 'en ligne' : fmtAgo(f.updated_at)}</span>
     </div>`;
   }).join('');
 }
-function renderInbox(list) {
+function renderSalon(list) {
   list = list || [];
-  const incoming = incomingCheers(list);
-  // réponses/❤️ de l'athlète indexés par message d'origine
-  const repliesByMsg = {};
-  list.filter((c) => c.sender === 'athlete' && c.reply_to).forEach((c) => {
-    (repliesByMsg[c.reply_to] = repliesByMsg[c.reply_to] || []).push(c);
-  });
-  $('inbox-empty').hidden = incoming.length > 0;
-  $('inbox-list').innerHTML = incoming.map((c) => {
-    const replies = (repliesByMsg[c.id] || [])
-      .map((r) => `<div class="cheer-reply">↳ ${r.is_like ? '❤️' : ''} ${escapeHtml(r.text || '')}</div>`).join('');
-    const open = state._replyTo === c.id;
-    const who = c.author || 'Supporter';
-    const box = open ? `<div class="reply-box">
-        <button class="reply-heart" data-heart="${escAttr(c.id)}" data-to="${escAttr(who)}">❤️ Remercier</button>
-        <input class="reply-input" data-in="${escAttr(c.id)}" maxlength="200" placeholder="Répondre à ${escAttr(who)} en privé…" />
-        <button class="reply-send" data-send="${escAttr(c.id)}" data-to="${escAttr(who)}">Envoyer</button>
-      </div>` : '';
-    return `<div class="cheer-row${c.is_like ? ' like' : ''}${open ? ' open' : ''}" data-row="${escAttr(c.id)}">
-      <div class="cheer-main">
-        <span class="cheer-who">${escapeHtml(who)}</span>
-        <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
-        <span class="cheer-when">${fmtAgo(c.created_at)}</span>
-      </div>
-      ${replies}${box}
+  const me = myChatName();
+  $('inbox-empty').hidden = list.length > 0;
+  const rows = list.slice().reverse(); // du plus ancien au plus récent
+  $('inbox-list').innerHTML = rows.map((c) => {
+    const mine = c.author === me;
+    const ath = c.sender === 'athlete';
+    return `<div class="chat-row${mine ? ' me' : ''}${ath ? ' ath' : ''}">
+      <span class="chat-who">${ath ? '🏃 ' : ''}${escapeHtml(c.author || 'Anonyme')}</span>
+      <span class="chat-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
+      <span class="chat-when">${fmtAgo(c.created_at)}</span>
     </div>`;
   }).join('');
+  const box = $('inbox-list'); if (box) box.scrollTop = box.scrollHeight;
 }
-async function onInboxListClick(e) {
-  const heart = e.target.closest('[data-heart]');
-  if (heart) { await athleteReply(heart.dataset.heart, heart.dataset.to, { is_like: true }); return; }
-  const send = e.target.closest('[data-send]');
-  if (send) {
-    const inp = $('inbox-list').querySelector(`[data-in="${send.dataset.send}"]`);
-    const text = inp ? inp.value.trim() : '';
-    if (!text) { toast('Écris un message.'); return; }
-    await athleteReply(send.dataset.send, send.dataset.to, { text });
-    return;
-  }
-  if (e.target.closest('.reply-box')) return; // clic dans l'input : on ne referme pas
-  const row = e.target.closest('[data-row]');
-  if (row) {
-    state._replyTo = state._replyTo === row.dataset.row ? null : row.dataset.row;
-    renderInbox(state._cheers || []);
-  }
-}
-async function athleteReply(replyToId, toPseudo, { is_like, text }) {
-  const fc = state.myFollowCode;
-  if (!fc) { toast('Active le partage pour répondre.'); return; }
-  const ok = await postCheer(fc, {
-    author: myDisplayName(), sender: 'athlete', target: toPseudo || null,
-    reply_to: replyToId || null, is_like: !!is_like, text: text || null,
+/** Envoi d'un message / like dans le salon (broadcast, visible de tous). */
+async function sendSalon({ text, is_like }) {
+  if (state.mode === 'athlete' && !state.myFollowCode) { try { await ensureFollowCode(); ensureAthleteNet(); } catch (_) { /* ignore */ } }
+  const code = salonCode();
+  if (!code) { toast('Salon indisponible.'); return false; }
+  text = (text || '').trim();
+  if (!is_like && !text) return false;
+  const ok = await postCheer(code, {
+    author: myChatName(), sender: state.mode === 'athlete' ? 'athlete' : 'follower',
+    text: text || null, is_like: !!is_like,
   });
-  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
-  state._replyTo = null;
-  toast(is_like ? '❤️ Remerciement envoyé' : '💬 Réponse envoyée en privé');
-  try { state._cheers = await fetchCheers(fc); } catch (_) { /* garde l'ancienne liste */ }
-  renderInbox(state._cheers || []);
-}
-async function sendBroadcast() {
-  const fc = state.myFollowCode || (state.mode === 'athlete' ? await ensureFollowCode().catch(() => null) : null);
-  if (!fc) { toast('Active le partage pour écrire à tes followers.'); return; }
-  const inp = $('bcast-input'); const text = (inp.value || '').trim();
-  if (!text) return;
-  const ok = await postCheer(fc, { author: myDisplayName(), sender: 'athlete', target: null, text });
-  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
-  inp.value = '';
-  toast('📣 Message envoyé à tous tes followers');
-  try { state._cheers = await fetchCheers(fc); } catch (_) { /* ignore */ }
-  renderInbox(state._cheers || []);
-}
-
-// --- Côté follower : messages reçus de l'athlète ---
-function athleteMsgsFor(list) {
-  const me = (state.followPseudo || '').trim();
-  return (list || []).filter((c) => c.sender === 'athlete' && (!c.target || c.target === me));
-}
-function handleAthleteMessages(list) {
-  const msgs = athleteMsgsFor(list);
-  state._fmsgs = msgs;
-  if (state._fmsgsLoaded) {
-    const news = msgs.filter((c) => !state.seenFmsg.has(c.id));
-    if (news.length) {
-      state.newFmsg = (state.newFmsg || 0) + news.length;
-      const c = news[0];
-      const live = state._followLive[state.followCode];
-      const who = (live && live.athlete_name) || 'L’athlète';
-      notify('💬 ' + who, c.is_like ? 't’a envoyé un ❤️' : (c.text || ''));
-    }
-  }
-  msgs.forEach((c) => state.seenFmsg.add(c.id));
-  state._fmsgsLoaded = true;
-  updateFollowerMsgBadge();
-  if (!$('fmsg-sheet').hidden) renderFollowerMessages(msgs);
-}
-function updateFollowerMsgBadge() {
-  $('inbox-count').textContent = (state._fmsgs || []).length;
-  $('live-inbox').classList.toggle('has-new', (state.newFmsg || 0) > 0);
-}
-async function openFollowerMessages() {
-  state.newFmsg = 0; updateFollowerMsgBadge();
-  let list = state._fmsgs;
-  if (!list) { try { list = athleteMsgsFor(await fetchCheers(state.followCode)); state._fmsgs = list; } catch (_) { list = []; } }
-  renderFollowerMessages(list || []);
-  $('fmsg-sheet').hidden = false;
-}
-function renderFollowerMessages(list) {
-  list = list || [];
-  $('fmsg-empty').hidden = list.length > 0;
-  $('fmsg-list').innerHTML = list.map((c) => {
-    const tag = c.target ? '<span class="msg-tag priv">privé</span>' : '<span class="msg-tag all">à tous</span>';
-    return `<div class="cheer-row${c.is_like ? ' like' : ''}">
-      <div class="cheer-main">
-        <span class="cheer-who">${escapeHtml(c.author || 'Athlète')} ${tag}</span>
-        <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
-        <span class="cheer-when">${fmtAgo(c.created_at)}</span>
-      </div>
-    </div>`;
-  }).join('');
+  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return false; }
+  try { handleSalon(await fetchCheers(code), true); } catch (_) { /* ignore */ }
+  return true;
 }
 
 // ------------------------------------------------------- FOLLOWER
@@ -2181,9 +2113,10 @@ async function followAthlete(code, pseudo) {
   state._followTracks[code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: row.name || 'Course' };
   const aName = (row.athlete_name || '').trim() || null;
   const avatar = row.avatar_path || null;
+  const salon = row.gpx_key || null; // identifiant du salon de l'épreuve
   let idx = state.follows.findIndex((f) => f.code === code);
-  if (idx < 0) { state.follows.push({ code, name: row.name || 'Course', athleteName: aName, avatar }); idx = state.follows.length - 1; saveFollows(); }
-  else { state.follows[idx].name = row.name || state.follows[idx].name; state.follows[idx].athleteName = aName || state.follows[idx].athleteName; state.follows[idx].avatar = avatar || state.follows[idx].avatar; saveFollows(); }
+  if (idx < 0) { state.follows.push({ code, name: row.name || 'Course', athleteName: aName, avatar, salon }); idx = state.follows.length - 1; saveFollows(); }
+  else { state.follows[idx].name = row.name || state.follows[idx].name; state.follows[idx].athleteName = aName || state.follows[idx].athleteName; state.follows[idx].avatar = avatar || state.follows[idx].avatar; state.follows[idx].salon = salon || state.follows[idx].salon; saveFollows(); }
   await openFollowAthlete(idx);
   return true;
 }
@@ -2201,6 +2134,7 @@ async function openFollowAthlete(idx) {
       if (row.name) f.name = row.name;
       if ((row.athlete_name || '').trim()) f.athleteName = row.athlete_name.trim();
       if (row.avatar_path) f.avatar = row.avatar_path;
+      if (row.gpx_key) f.salon = row.gpx_key;
       saveFollows();
     }
   }
@@ -2221,21 +2155,19 @@ function enterFollowerMode() {
   state.follow = false;
   state.seenMedia = new Set(); state._mediaLoaded = false;
   state.newFeed = 0; state._media = null;
-  // messages reçus de l'athlète focalisé : on repart propre à chaque changement d'athlète
-  state.seenFmsg = new Set(); state._fmsgsLoaded = false; state.newFmsg = 0; state._fmsgs = null;
+  // salon : on repart propre à chaque changement d'athlète focalisé (salon potentiellement différent)
+  state.seenSalon = new Set(); state._salonLoaded = false; state.newSalon = 0; state._salon = null; state._participants = null; state._presenceAt = 0;
   refreshMediaMarkers([]);
   ensureNotifyPermission();
   $('live-banner').hidden = false;
   $('follow-geo').hidden = false;
   updateFollowerBanner(state._followLive[state.followCode] || null);
-  updateFollowerMsgBadge();
+  updateSalonBadge();
   renderFollowTabs();
   renderAllAthletes();
-  // présence immédiate : l'athlète voit tout de suite qui le suit
-  if (state.followPseudo) {
-    state._lastPresence = Date.now();
-    state.follows.forEach((f) => { registerFollower(f.code, state.followPseudo).catch(() => {}); });
-  }
+  // présence immédiate dans le salon
+  const sc = salonCode();
+  if (sc) { registerFollower(sc, myChatName()).catch(() => {}); state._presenceAt = Date.now(); }
   startFollowerPolling();
   toast(`👀 Tu suis « ${state.track.name} » en live.`);
 }
@@ -2488,12 +2420,6 @@ function resumeFollowerLoop() {
 async function pollFollower() {
   if (state.mode !== 'follower' || !state.follows.length) return;
   try {
-    // battement de présence (~toutes les 45 s) : l'athlète voit qui le suit
-    const now = Date.now();
-    if (state.followPseudo && now - (state._lastPresence || 0) > 45000) {
-      state._lastPresence = now;
-      state.follows.forEach((f) => { registerFollower(f.code, state.followPseudo).catch(() => {}); });
-    }
     // positions de TOUS les athlètes suivis (affichés sur la même carte)
     await Promise.all(state.follows.map(async (f) => {
       try {
@@ -2509,8 +2435,8 @@ async function pollFollower() {
     if (active && active.lat != null) renderAthletePosition(active);
     const media = await fetchMedia(state.followCode);
     handleFollowerMedia(media);
-    // messages laissés par l'athlète (broadcast + réponses privées à moi)
-    try { handleAthleteMessages(await fetchCheers(state.followCode)); } catch (_) { /* ignore */ }
+    // salon de groupe (messages partagés par tous les liés à l'épreuve)
+    await pollSalon();
   } catch (_) { /* réseau : on réessaiera au prochain tick */ }
 }
 
@@ -2660,15 +2586,13 @@ function renderMediaStrip(list) {
   }).join('');
 }
 async function sendCheer({ is_like, text }) {
-  if (state.mode !== 'follower' || !state.followCode) return;
+  if (state.mode !== 'follower') return;
   text = (text || '').trim();
   if (!is_like && !text) return;
-  const ok = await postCheer(state.followCode, {
-    author: state.followPseudo || 'Supporter', is_like: !!is_like, text: text || null,
-  });
-  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
+  const ok = await sendSalon({ is_like, text });
+  if (!ok) return;
   if (is_like) { const bt = $('cheer-like'); bt.classList.remove('pop'); void bt.offsetWidth; bt.classList.add('pop'); toast('❤️ Envoyé !'); }
-  else { $('cheer-input').value = ''; toast('💬 Message envoyé !'); }
+  else { $('cheer-input').value = ''; $('cheer-note').hidden = true; toast('💬 Message envoyé !'); }
 }
 
 // ------------------------------------------------------- MÉDIAS : fil + visionneuse (partagé)

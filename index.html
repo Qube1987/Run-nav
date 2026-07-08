@@ -224,8 +224,8 @@
       <button id="act-photo" class="act" type="button" title="Photo / vidéo géolocalisée">
         <span class="act-ico">📸</span><span>Média</span>
       </button>
-      <button id="act-inbox" class="act" type="button" title="Tes followers &amp; leurs messages">
-        <span class="act-ico">👥</span><span>Followers</span>
+      <button id="act-inbox" class="act" type="button" title="Salon de l'épreuve">
+        <span class="act-ico">💬</span><span>Salon</span>
         <span id="act-inbox-badge" class="act-badge" hidden></span>
       </button>
       <button id="act-pace" class="act" type="button" title="Points de passage & allure">
@@ -239,7 +239,7 @@
 
     <!-- Barre d'encouragement (mode follower) -->
     <div id="cheer-wrap" class="cheer-wrap" hidden>
-      <p id="cheer-note" class="cheer-note" hidden>ℹ️ Tes messages sont visibles par l'athlète et tous les followers en ligne.</p>
+      <p id="cheer-note" class="cheer-note" hidden>ℹ️ Message visible par tout le monde dans le salon de l'épreuve (athlètes &amp; followers).</p>
       <div id="cheer-bar" class="cheer-bar">
         <button id="cheer-like" class="cheer-like" type="button" title="Envoyer un like">❤️</button>
         <input id="cheer-input" type="text" maxlength="200" placeholder="Encourage l'athlète…" />
@@ -345,42 +345,27 @@
     </div>
   </div>
 
-  <!-- Followers : qui te suit + leurs encouragements (athlète) -->
+  <!-- Salon de l'épreuve : conversation de groupe (athlètes, potes, followers) -->
   <div id="inbox-sheet" class="sheet" hidden>
     <div class="sheet-bg" data-iclose></div>
     <div class="sheet-panel">
       <div class="sheet-head">
-        <h2>👥 Followers</h2>
+        <h2>💬 Salon de l'épreuve</h2>
         <button class="sheet-close" data-iclose type="button">✕</button>
       </div>
       <div class="sheet-body">
-        <h3 class="inbox-section">Qui te suit <span id="followers-count" class="inbox-badge2">0</span></h3>
-        <p class="hint" id="followers-empty" hidden>Personne ne te suit encore. Partage ton code de suivi !</p>
-        <div id="followers-list" class="followers-list"></div>
-
-        <h3 class="inbox-section">💬 Messages</h3>
-        <p class="hint" id="inbox-empty" hidden>Aucun message pour l'instant. Partage ton code à tes supporters !</p>
+        <details class="salon-parts">
+          <summary>Participants <span id="followers-count" class="inbox-badge2">0</span></summary>
+          <p class="hint" id="followers-empty" hidden>Personne d'autre pour l'instant.</p>
+          <div id="followers-list" class="followers-list"></div>
+        </details>
+        <p class="hint" id="inbox-empty" hidden>Pas encore de message. Lance la discussion !</p>
         <div id="inbox-list" class="inbox-list"></div>
       </div>
-      <!-- Message à tous les followers (broadcast) -->
+      <!-- Message au salon (visible par tout le monde) -->
       <div class="inbox-compose">
-        <input id="bcast-input" type="text" maxlength="200" placeholder="Un mot à tous tes followers…" />
-        <button id="bcast-send" type="button">Envoyer à tous</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Messages de l'athlète (côté follower) -->
-  <div id="fmsg-sheet" class="sheet" hidden>
-    <div class="sheet-bg" data-fclose></div>
-    <div class="sheet-panel">
-      <div class="sheet-head">
-        <h2>💬 Messages de l'athlète</h2>
-        <button class="sheet-close" data-fclose type="button">✕</button>
-      </div>
-      <div class="sheet-body">
-        <p class="hint" id="fmsg-empty" hidden>Aucun message de l'athlète pour l'instant.</p>
-        <div id="fmsg-list" class="inbox-list"></div>
+        <input id="bcast-input" type="text" maxlength="200" placeholder="Message au salon…" />
+        <button id="bcast-send" type="button">Envoyer</button>
       </div>
     </div>
   </div>

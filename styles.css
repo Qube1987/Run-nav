@@ -744,6 +744,26 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   font-size: 11px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* --- salon de l'épreuve (chat de groupe) --- */
+.salon-parts { margin-bottom: 12px; }
+.salon-parts > summary {
+  cursor: pointer; font-size: 13px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 4px 0; list-style: none;
+}
+.salon-parts > summary::-webkit-details-marker { display: none; }
+.salon-parts > summary::before { content: '▸ '; }
+.salon-parts[open] > summary::before { content: '▾ '; }
+.salon-parts .followers-list { margin-top: 6px; }
+.chat-row {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 7px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line);
+}
+.chat-row.ath { border-color: rgba(74,163,255,0.5); background: rgba(74,163,255,0.08); }
+.chat-row.me { background: rgba(63,191,111,0.10); border-color: rgba(63,191,111,0.35); }
+.chat-who { flex: none; font-weight: 700; color: var(--text); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-txt { flex: 1; color: var(--text); word-break: break-word; }
+.chat-when { flex: none; font-size: 11px; color: var(--muted); }
+
 /* --- boîte de réception (encouragements) --- */
 .inbox-list { display: flex; flex-direction: column; gap: 8px; }
 .cheer-row {
