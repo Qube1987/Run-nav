@@ -49,7 +49,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -678,7 +678,6 @@ function updateStatbarOffRoute() {
   $('st-dist').textContent = `– / ${(t.total / 1000).toFixed(1)}`;
   $('st-climb').textContent = '–';
   const gEl = $('st-grade'); gEl.textContent = '–'; gEl.style.color = '';
-  $('st-speed').textContent = state.watchId != null ? `${(state.liveSpeed * 3.6).toFixed(1)} km/h` : '–';
   $('st-eta').textContent = '–';
 }
 
@@ -718,10 +717,6 @@ function updateStatbar(d, off) {
   const gEl = $('st-grade');
   gEl.textContent = `${grade >= 0 ? '+' : ''}${grade.toFixed(1)} %`;
   gEl.style.color = gradeCss(grade);
-
-  // vitesse
-  const kmh = state.liveSpeed * 3.6;
-  $('st-speed').textContent = state.watchId != null ? `${kmh.toFixed(1)} km/h` : '–';
 
   // ETA arrivée
   $('st-eta').textContent = etaText();
