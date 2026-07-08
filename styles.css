@@ -803,3 +803,22 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: var(--panel-2); color: var(--text); border: 1px dashed var(--line);
   font-size: 18px; line-height: 1; cursor: pointer;
 }
+
+/* --- marqueurs de plusieurs athlètes sur la même carte --- */
+.ath-icon { text-align: center; overflow: visible; }
+.ath-wrap { position: relative; display: flex; flex-direction: column; align-items: center; }
+.ath-pin {
+  width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 800; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.ath-pin.focused { border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(255, 210, 74, 0.55), 0 2px 6px rgba(0, 0, 0, 0.5); }
+.ath-pin.off { opacity: 0.5; filter: grayscale(0.35); }
+.ath-name {
+  margin-top: 2px; font-size: 10px; font-weight: 700; color: #fff;
+  background: rgba(0, 0, 0, 0.6); padding: 1px 6px; border-radius: 7px;
+  white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis;
+}
+/* pastille d'onglet : garde la couleur de l'athlète, anneau pulsant si en live */
+.ft-dot.on { background: initial; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18); animation: ft-pulse 1.3s infinite; }
+@keyframes ft-pulse { 50% { opacity: 0.45; } }

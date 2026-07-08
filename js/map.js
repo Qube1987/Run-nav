@@ -130,6 +130,25 @@ export class RaceMap {
 
   clearWaypoints() { this.wptLayer.clearLayers(); }
 
+  /** Positions de TOUS les athlètes suivis (marqueurs colorés cliquables). */
+  setAthletes(list, onSelect) {
+    if (!this.athLayer) this.athLayer = L.layerGroup().addTo(this.map);
+    this.athLayer.clearLayers();
+    for (const a of (list || [])) {
+      if (a.lat == null || a.lon == null) continue;
+      const cls = 'ath-pin' + (a.focused ? ' focused' : '') + (a.active ? '' : ' off');
+      const html = `<div class="ath-wrap">`
+        + `<div class="${cls}" style="background:${a.color}"><span>${a.initial}</span></div>`
+        + `<span class="ath-name">${a.name}</span></div>`;
+      const mk = L.marker([a.lat, a.lon], {
+        icon: L.divIcon({ className: 'ath-icon', html, iconSize: [34, 34], iconAnchor: [17, 17] }),
+        zIndexOffset: a.focused ? 1200 : 700,
+      }).addTo(this.athLayer);
+      mk.on('click', () => { if (onSelect) onSelect(a.code); });
+    }
+  }
+  clearAthletes() { if (this.athLayer) this.athLayer.clearLayers(); }
+
   /** Position du follower lui-même (marqueur « moi » distinct). */
   setFollowerPosition(lat, lon) {
     const ll = [lat, lon];

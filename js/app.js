@@ -48,7 +48,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1871,8 +1871,8 @@ function enterFollowerMode() {
   $('follow-geo').hidden = false;
   updateFollowerBanner(state._followLive[state.followCode] || null);
   renderFollowTabs();
+  renderAllAthletes();
   startFollowerPolling();
-  startFollowStatusPoll();
   toast(`👀 Tu suis « ${state.track.name} » en live.`);
 }
 
@@ -1886,7 +1886,7 @@ function renderFollowTabs() {
     const live = state._followLive[f.code];
     const on = live && live.active && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
     return `<button class="ftab${i === state.followActive ? ' active' : ''}" data-i="${i}">` +
-      `<span class="ft-dot${on ? ' on' : ''}"></span>${escapeHtml(f.name || f.code)}` +
+      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${escapeHtml(f.athleteName || f.name || f.code)}` +
       `<span class="ft-x" data-x="${i}" title="Retirer">✕</span></button>`;
   }).join('') + `<button class="ftab-add" data-add="1" title="Suivre un autre athlète">＋</button>`;
 }
@@ -1907,22 +1907,11 @@ function removeFollow(idx) {
   openFollowAthlete(next);
 }
 function exitFollowerToWelcome() {
-  stopFollowerPolling(); stopFollowStatusPoll();
+  stopFollowerPolling();
+  if (state.map) state.map.clearAthletes();
   state.mode = 'athlete';
   $('app').hidden = true;
   $('welcome').hidden = false;
-}
-function startFollowStatusPoll() {
-  stopFollowStatusPoll();
-  pollFollowStatus();
-  state._statusT = setInterval(pollFollowStatus, 15000);
-}
-function stopFollowStatusPoll() { if (state._statusT) { clearInterval(state._statusT); state._statusT = null; } }
-async function pollFollowStatus() {
-  for (const f of state.follows) {
-    try { const live = await fetchLive(f.code); if (live) state._followLive[f.code] = live; } catch (_) { /* ignore */ }
-  }
-  renderFollowTabs();
 }
 
 // --- Géolocalisation du follower : voir si l'athlète s'approche ---
@@ -1958,7 +1947,7 @@ function startFollowerPolling() {
 }
 function stopFollowerPolling() {
   if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
-  stopFollowStatusPoll();
+  if (state.map) state.map.clearAthletes();
   if (state.followerWatchId != null) {
     try { navigator.geolocation.clearWatch(state.followerWatchId); } catch (_) { /* ignore */ }
     state.followerWatchId = null; state.followerPos = null; state._lastDist = null;
@@ -1966,14 +1955,47 @@ function stopFollowerPolling() {
   }
 }
 async function pollFollower() {
-  const code = state.followCode; if (!code) return;
+  if (state.mode !== 'follower' || !state.follows.length) return;
   try {
-    const live = await fetchLive(code);
-    updateFollowerBanner(live);
-    if (live && live.lat != null) renderAthletePosition(live);
-    const media = await fetchMedia(code);
+    // positions de TOUS les athlètes suivis (affichés sur la même carte)
+    await Promise.all(state.follows.map(async (f) => {
+      try { const live = await fetchLive(f.code); if (live) state._followLive[f.code] = live; } catch (_) { /* ignore */ }
+    }));
+    renderAllAthletes();
+    renderFollowTabs();
+    // détail de l'athlète focalisé (profil / stats / bannière / médias)
+    const active = state._followLive[state.followCode];
+    updateFollowerBanner(active || null);
+    if (active && active.lat != null) renderAthletePosition(active);
+    const media = await fetchMedia(state.followCode);
     handleFollowerMedia(media);
   } catch (_) { /* réseau : on réessaiera au prochain tick */ }
+}
+
+// Couleurs distinctes par athlète suivi.
+const ATH_COLORS = ['#4aa3ff', '#ff5a3c', '#3fbf6f', '#b06fff', '#ffd24a', '#ff6fae', '#20c9c9', '#ff9f40'];
+function athColor(i) { return ATH_COLORS[i % ATH_COLORS.length]; }
+
+/** Affiche tous les athlètes suivis sur la carte (marqueurs colorés cliquables). */
+function renderAllAthletes() {
+  if (!state.map) return;
+  const now = Date.now();
+  const list = state.follows.map((f, i) => {
+    const live = state._followLive[f.code];
+    if (live && live.athlete_name) f.athleteName = live.athlete_name; // nom réel de l'athlète (live)
+    if (!live || live.lat == null) return null;
+    const on = live.active && live.updated_at && (now - new Date(live.updated_at).getTime() < 120000);
+    const nm = (f.athleteName || f.name || f.code).trim();
+    return {
+      code: f.code, lat: live.lat, lon: live.lon,
+      name: escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
+      color: athColor(i), active: on, focused: f.code === state.followCode,
+    };
+  }).filter(Boolean);
+  state.map.setAthletes(list, (code) => {
+    const i = state.follows.findIndex((f) => f.code === code);
+    if (i >= 0 && code !== state.followCode) openFollowAthlete(i);
+  });
 }
 function updateFollowerBanner(live) {
   const b = $('live-banner');
@@ -2010,11 +2032,9 @@ function renderAthletePosition(live) {
   const proj = projectOnTrack({ lat: live.lat, lon: live.lon }, state.track.points, state.hint);
   state.hint = proj.index;
   const projected = pointAtDistance(state.track.points, proj.along);
-  if (state.map) {
-    state.map.setPosition(live.lat, live.lon, 0, null);
-    state.map.setProgress(proj.index, projected);
-    state.map.highlightCursor(projected.lat, projected.lon);
-  }
+  // la position est portée par le marqueur coloré de l'athlète (setAthletes) ;
+  // ici on ne trace que la portion parcourue de la trace de l'athlète focalisé.
+  if (state.map) state.map.setProgress(proj.index, projected);
   const d = live.d != null ? live.d : proj.along;
   state.lastFix = { lat: live.lat, lon: live.lon, d, index: proj.index, onRoute: true, t: Date.now() };
   state.liveSpeed = live.speed || 0;
