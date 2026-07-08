@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -149,6 +149,7 @@ function init() {
   $('media-input').addEventListener('change', onMediaPicked);
   $('act-inbox').addEventListener('click', openInbox);
   $('live-share').addEventListener('click', shareLive);
+  $('live-mates').addEventListener('click', addMatePrompt);
   $('live-inbox').addEventListener('click', () => (state.mode === 'follower' ? openFollowerMessages() : openInbox()));
   $('live-feed').addEventListener('click', openMediaFeed);
   $('media-strip').addEventListener('click', (e) => {
@@ -527,10 +528,10 @@ function startApp(track) {
   updateStatbar(0);
   setProfileView('full');
   applyModeUI();
-  // athlète déjà partagé : écoute les encouragements + affiche ses photos + bandeau
-  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) { startInboxPolling(); updateLiveBanner(); }
-  // athlète : barre « suivre un pote » + suivi live des potes ajoutés
-  if (state.mode === 'athlete') { renderMateBar(); startMatesPolling(); }
+  // athlète déjà partagé : écoute les encouragements + affiche ses photos
+  if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) { startInboxPolling(); }
+  // athlète : bandeau (avec 👀 « suivre un pote ») + suivi live des potes ajoutés
+  if (state.mode === 'athlete') { updateLiveBanner(); renderMateBar(); startMatesPolling(); }
   if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
@@ -1721,7 +1722,7 @@ function applyModeUI() {
   if (ab) ab.hidden = follower;
   $('cheer-wrap').hidden = !follower;
   if (follower) stopMatesPolling(); // le suivi des potes est propre au mode athlète
-  if (!follower) { $('live-banner').hidden = !state.liveOn; }
+  if (!follower) updateLiveBanner();
 }
 
 function ensureNotifyPermission() {
@@ -1809,14 +1810,21 @@ function maybeBroadcast(lat, lon, d, ele) {
 function updateLiveBanner() {
   if (state.mode === 'follower') return;
   const b = $('live-banner');
-  if (!state.cloudCode) { b.hidden = true; return; }
+  const shared = !!state.cloudCode;
+  // Bandeau visible pour tout athlète connecté : il porte l'entrée « 👀 Suivre un pote »
+  // même avant d'avoir partagé sa course.
+  if (!shared && !isLoggedIn()) { b.hidden = true; return; }
   b.hidden = false;
+  $('live-mates').hidden = false;  // 👀 suivre un pote (athlète)
   $('follow-geo').hidden = true;   // (follower uniquement)
-  $('live-share').hidden = false;
-  $('live-inbox').hidden = false;
-  $('live-feed').hidden = false;
+  $('live-share').hidden = !shared;
+  $('live-inbox').hidden = !shared;
+  $('live-feed').hidden = !shared;
   const suffix = state.myFollowCode ? ` · suivi ${state.myFollowCode}` : '';
-  if (state.liveOn) {
+  if (!shared) {
+    b.classList.add('offline');
+    $('live-text').textContent = 'Prêt · 👀 pour suivre un pote';
+  } else if (state.liveOn) {
     b.classList.remove('offline');
     $('live-text').textContent = `🔴 En live${suffix}`;
   } else {
@@ -2214,6 +2222,8 @@ function renderMateBar() {
   const el = $('follow-tabs');
   if (!el) return;
   if (state.mode !== 'athlete') return; // le mode follower gère #follow-tabs de son côté
+  // Barre visible seulement quand on suit au moins un pote ; l'ajout se fait via 👀 dans le bandeau.
+  if (!state.mates.length) { el.hidden = true; el.innerHTML = ''; return; }
   const now = Date.now();
   const chips = state.mates.map((m, i) => {
     const live = state._matesLive[m.code];
@@ -2223,9 +2233,7 @@ function renderMateBar() {
       `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${escapeHtml(nm)}` +
       `<span class="ft-x" data-mx="${i}" title="Retirer">✕</span></button>`;
   }).join('');
-  const wide = state.mates.length ? '' : ' wide';
-  const addLabel = state.mates.length ? '＋' : '👀 Suivre un pote';
-  el.innerHTML = chips + `<button class="ftab-add${wide}" data-mateadd="1" title="Suivre un pote sur la course">${addLabel}</button>`;
+  el.innerHTML = chips + `<button class="ftab-add" data-mateadd="1" title="Suivre un autre pote">＋</button>`;
   el.hidden = false;
 }
 function onMateBarClick(e) {
@@ -2421,6 +2429,7 @@ function renderAllAthletes() {
 function updateFollowerBanner(live) {
   const b = $('live-banner');
   b.hidden = false;
+  $('live-mates').hidden = true;  // (athlète uniquement)
   $('live-feed').hidden = false;
   $('live-inbox').hidden = false; // 💬 : messages laissés par l'athlète
   $('live-share').hidden = false;
