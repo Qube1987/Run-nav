@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1501,6 +1501,7 @@ function showWaypointInfo(meta, d) {
       : `${(toPointM / 1000).toFixed(1)} km · dans ${fmtDuration(toGoSec)}`]);
   }
   rows.push(['Jusqu’à l’arrivée', `${(toFinishM / 1000).toFixed(1)} km`]);
+  rows.push(['Dénivelé restant', `${remainingGain(d)} m D+`]);
   const g = gradeAt(d);
   rows.push(['Altitude · pente', `${Math.round(here.ele)} m · ${g >= 0 ? '+' : ''}${g.toFixed(1)} %`]);
   rows.push(['Temps de course', fmtDuration(tSec)]);
