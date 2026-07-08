@@ -32,10 +32,12 @@ const $ = (id) => document.getElementById(id);
 
 // Cadence réseau (ms) — une SEULE boucle par mode réveille la radio à intervalle fixe
 // (diffusion + sondages regroupés au même tick = un seul réveil radio par cycle).
-// - Premier plan normal : NET_FG_MS.
-// - Arrière-plan (écran éteint) ou mode éco : NET_ECO_MS (≈ 1 réveil / minute).
-const NET_FG_MS = 10000;   // premier plan : suivi réactif
-const NET_ECO_MS = 60000;  // arrière-plan / éco : une fois par minute
+// - Premier plan normal : NET_FG_MS (diffusion + sondages).
+// - Arrière-plan (écran éteint) : NET_BG_MS — on pousse encore notre position, sondages en pause.
+// - Mode éco : NET_ECO_MS — on coupe TOUTE la synchro, on ne pousse que notre position.
+const NET_FG_MS = 10000;    // premier plan : suivi réactif
+const NET_BG_MS = 60000;    // arrière-plan : 1 réveil / minute (position seule)
+const NET_ECO_MS = 240000;  // mode éco : position seule, 1 réveil / 4 min
 
 // Filet de sécurité : au lieu d'une page blanche, toute erreur non gérée
 // s'affiche en bas de l'écran (diagnostic sur le téléphone de l'utilisateur).
@@ -57,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1893,7 +1895,11 @@ async function onMediaPicked(e) {
 // ------------------------------------------------------- ATHLÈTE : boucle réseau unique (batterie)
 // Une seule boucle réveille la radio à intervalle fixe et regroupe : diffusion de NOTRE position
 // (poursuivie même en arrière-plan) + sondages entrants (potes, messages) mis en pause hors premier plan.
-function athleteNetPeriod() { return (state.ecoMode || document.hidden) ? NET_ECO_MS : NET_FG_MS; }
+function athleteNetPeriod() {
+  if (state.ecoMode) return NET_ECO_MS;      // éco : position seule, 1×/4 min
+  if (document.hidden) return NET_BG_MS;     // arrière-plan : position seule, 1×/min
+  return NET_FG_MS;                          // premier plan : diffusion + sondages
+}
 function athleteNetNeeded() {
   return state.mode === 'athlete' && (state.liveOn || state.mates.length > 0 || !!state.myFollowCode);
 }
@@ -1913,10 +1919,11 @@ function ensureAthleteNet() {
 }
 async function athleteNetTick() {
   if (state.mode !== 'athlete') { stopAthleteNet(); return; }
-  // 1) POUSSER notre position — même écran éteint (sinon la position se fige pour les followers)
+  // 1) POUSSER notre position — même écran éteint / en éco (sinon elle se fige pour les followers)
   if (state.liveOn) broadcastNow();
-  // 2) sondages ENTRANTS (potes + messages) — en pause quand l'appli n'est pas au premier plan
-  if (!document.hidden) {
+  // 2) sondages ENTRANTS (potes + messages) — en pause en arrière-plan ET en mode éco
+  //    (en éco on coupe toute la synchro pour économiser un maximum la batterie).
+  if (!document.hidden && !state.ecoMode) {
     if (state.myFollowCode) pollInbox();
     if (state.mates.length) pollMates();
   }
@@ -2361,7 +2368,7 @@ function toggleEco() {
   updateEcoUI();
   updateLiveBanner();
   toast(state.ecoMode
-    ? '🔋 Mode éco activé · position diffusée 1×/min. Tes suiveurs sont prévenus.'
+    ? '🔋 Mode éco · synchro coupée, position diffusée 1×/4 min. Tes suiveurs sont prévenus.'
     : '⚡ Mode éco désactivé · diffusion normale.');
 }
 function updateEcoUI() {
@@ -2370,7 +2377,7 @@ function updateEcoUI() {
   btn.hidden = state.mode !== 'athlete';
   btn.classList.toggle('on', !!state.ecoMode);
   btn.title = state.ecoMode
-    ? 'Mode éco actif (position 1×/min) — toucher pour désactiver'
+    ? 'Mode éco actif (synchro coupée, position 1×/4 min) — toucher pour désactiver'
     : 'Activer le mode éco batterie';
 }
 async function pollMates() {
@@ -2546,9 +2553,9 @@ function updateFollowerBanner(live) {
   const name = (live && (live.athlete_name || '').trim())
     || (focused && (focused.athleteName || '').trim())
     || 'Athlète';
-  // en mode éco l'athlète diffuse ~1×/min : on élargit la fenêtre « en ligne » pour ne pas
-  // le croire hors ligne entre deux positions.
-  const freshWin = (live && live.eco) ? 240000 : 120000;
+  // en mode éco l'athlète ne diffuse qu'1×/4 min : on élargit la fenêtre « en ligne »
+  // (jusqu'à ~6 min) pour ne pas le croire hors ligne entre deux positions.
+  const freshWin = (live && live.eco) ? 360000 : 120000;
   const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < freshWin);
   const ecoTxt = (live && live.eco) ? ' · 🔋 éco' : '';
   // distance athlète ↔ moi (si le follower a activé sa position)
