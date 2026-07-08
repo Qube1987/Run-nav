@@ -222,8 +222,8 @@
       <button id="act-photo" class="act" type="button" title="Photo / vidéo géolocalisée">
         <span class="act-ico">📸</span><span>Média</span>
       </button>
-      <button id="act-inbox" class="act" type="button" title="Messages d'encouragement">
-        <span class="act-ico">💬</span><span>Messages</span>
+      <button id="act-inbox" class="act" type="button" title="Tes followers &amp; leurs messages">
+        <span class="act-ico">👥</span><span>Followers</span>
         <span id="act-inbox-badge" class="act-badge" hidden></span>
       </button>
       <button id="act-pace" class="act" type="button" title="Points de passage & allure">
@@ -340,15 +340,20 @@
     </div>
   </div>
 
-  <!-- Boîte de réception des encouragements (athlète) -->
+  <!-- Followers : qui te suit + leurs encouragements (athlète) -->
   <div id="inbox-sheet" class="sheet" hidden>
     <div class="sheet-bg" data-iclose></div>
     <div class="sheet-panel">
       <div class="sheet-head">
-        <h2>💬 Encouragements</h2>
+        <h2>👥 Followers</h2>
         <button class="sheet-close" data-iclose type="button">✕</button>
       </div>
       <div class="sheet-body">
+        <h3 class="inbox-section">Qui te suit <span id="followers-count" class="inbox-badge2">0</span></h3>
+        <p class="hint" id="followers-empty" hidden>Personne ne te suit encore. Partage ton code de suivi !</p>
+        <div id="followers-list" class="followers-list"></div>
+
+        <h3 class="inbox-section">💬 Messages</h3>
         <p class="hint" id="inbox-empty" hidden>Aucun message pour l'instant. Partage ton code à tes supporters !</p>
         <div id="inbox-list" class="inbox-list"></div>
       </div>

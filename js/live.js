@@ -72,6 +72,26 @@ export async function getFollowCode(raceCode) {
   return (rows[0] && rows[0].follow_code) || null;
 }
 
+// ------------------------------------------------------------ PRÉSENCE FOLLOWERS
+/** Signale (upsert) qu'un follower suit une épreuve — présence visible par l'athlète. */
+export async function registerFollower(code, pseudo) {
+  const p = String(pseudo || '').trim();
+  if (!code || !p) return false;
+  const body = { code, pseudo: p, updated_at: new Date().toISOString() };
+  const res = await apiFetch('/rest/v1/runnav_followers?on_conflict=code,pseudo', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(body),
+  });
+  return res.ok;
+}
+/** Liste des followers d'une épreuve (les plus récemment actifs d'abord). */
+export async function fetchFollowers(code) {
+  const res = await apiFetch(`/rest/v1/runnav_followers?code=eq.${encodeURIComponent(code)}&select=pseudo,created_at,updated_at&order=updated_at.desc`, { method: 'GET' });
+  if (!res.ok) return [];
+  return await res.json();
+}
+
 // ------------------------------------------------------------ POSITION LIVE (athlète)
 export async function broadcastPosition(code, pos) {
   const body = { code, ...pos, updated_at: new Date().toISOString() };

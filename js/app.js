@@ -25,6 +25,7 @@ import {
   postCheer, fetchCheers,
   resolveFollow, setFollowCode, getFollowCode,
   fetchMyProfile, saveMyProfile, uploadAvatar, avatarUrl,
+  registerFollower, fetchFollowers,
 } from './live.js';
 
 const $ = (id) => document.getElementById(id);
@@ -49,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1861,6 +1862,11 @@ async function pollInbox() {
   }
   list.forEach((c) => state.seenCheers.add(c.id));
   state._inboxLoaded = true;
+  // liste de ceux qui te suivent
+  try {
+    state._followers = await fetchFollowers(fc);
+    if ($('inbox-sheet') && !$('inbox-sheet').hidden) renderFollowers(state._followers);
+  } catch (_) { /* ignore */ }
   updateInboxBadge();
   // l'athlète voit aussi ses propres médias sur la carte / le profil
   try {
@@ -1886,7 +1892,24 @@ async function openInbox() {
   if (!list && fc) { try { list = await fetchCheers(fc); } catch (_) { list = []; } }
   if (!list) list = [];
   renderInbox(list);
+  let followers = state._followers;
+  if (!followers && fc) { try { followers = await fetchFollowers(fc); state._followers = followers; } catch (_) { followers = []; } }
+  renderFollowers(followers || []);
   $('inbox-sheet').hidden = false;
+}
+function renderFollowers(list) {
+  list = list || [];
+  $('followers-count').textContent = list.length;
+  $('followers-empty').hidden = list.length > 0;
+  const now = Date.now();
+  $('followers-list').innerHTML = list.map((f) => {
+    const online = f.updated_at && (now - new Date(f.updated_at).getTime() < 150000);
+    return `<div class="follower-row">
+      <span class="fw-dot${online ? ' on' : ''}"></span>
+      <span class="fw-who">${escapeHtml(f.pseudo || 'Supporter')}</span>
+      <span class="fw-when">${online ? 'en ligne' : fmtAgo(f.updated_at)}</span>
+    </div>`;
+  }).join('');
 }
 function renderInbox(list) {
   $('inbox-empty').hidden = list.length > 0;
@@ -2007,6 +2030,11 @@ function enterFollowerMode() {
   updateFollowerBanner(state._followLive[state.followCode] || null);
   renderFollowTabs();
   renderAllAthletes();
+  // présence immédiate : l'athlète voit tout de suite qui le suit
+  if (state.followPseudo) {
+    state._lastPresence = Date.now();
+    state.follows.forEach((f) => { registerFollower(f.code, state.followPseudo).catch(() => {}); });
+  }
   startFollowerPolling();
   toast(`👀 Tu suis « ${state.track.name} » en live.`);
 }
@@ -2093,6 +2121,12 @@ function stopFollowerPolling() {
 async function pollFollower() {
   if (state.mode !== 'follower' || !state.follows.length) return;
   try {
+    // battement de présence (~toutes les 45 s) : l'athlète voit qui le suit
+    const now = Date.now();
+    if (state.followPseudo && now - (state._lastPresence || 0) > 45000) {
+      state._lastPresence = now;
+      state.follows.forEach((f) => { registerFollower(f.code, state.followPseudo).catch(() => {}); });
+    }
     // positions de TOUS les athlètes suivis (affichés sur la même carte)
     await Promise.all(state.follows.map(async (f) => {
       try { const live = await fetchLive(f.code); if (live) state._followLive[f.code] = live; } catch (_) { /* ignore */ }
