@@ -36,9 +36,10 @@
         </button>
         <div id="follow-box" class="follow-box" hidden>
           <input id="follow-code" type="text" inputmode="text" autocapitalize="characters"
-                 maxlength="8" placeholder="Code de l'athlète" />
+                 maxlength="8" placeholder="Code de suivi de l'athlète" />
           <input id="follow-name" type="text" maxlength="24" placeholder="Ton prénom / pseudo" />
           <button id="follow-go" type="button">👀 Suivre en live</button>
+          <p class="hint" style="margin:2px 0 0">Tu peux en ajouter d'autres ensuite pour suivre plusieurs athlètes.</p>
         </div>
       </div>
 
@@ -93,11 +94,11 @@
       </div>
 
       <details class="welcome-restore-wrap">
-        <summary>Ouvrir par code de partage</summary>
+        <summary>Importer l'épreuve d'un autre athlète</summary>
         <div class="welcome-restore">
           <input id="welcome-code" type="text" inputmode="text" autocapitalize="characters"
-                 maxlength="6" placeholder="Code de sauvegarde cloud…" />
-          <button id="welcome-restore-btn" type="button">☁️ Ouvrir mon parcours</button>
+                 maxlength="6" placeholder="Code d'import de l'épreuve…" />
+          <button id="welcome-restore-btn" type="button">📥 Importer l'épreuve</button>
         </div>
       </details>
 
@@ -155,6 +156,9 @@
         <button id="live-inbox" class="lb-btn" type="button" hidden>💬 <span id="inbox-count">0</span></button>
       </div>
     </div>
+
+    <!-- Onglets multi-athlètes (mode suivi) -->
+    <div id="follow-tabs" class="follow-tabs" hidden></div>
 
     <!-- Bandeau "hors parcours" -->
     <div id="offroute-banner" class="offroute-banner" hidden>

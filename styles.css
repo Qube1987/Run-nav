@@ -777,3 +777,29 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
 }
 .mv-del:active { background: rgba(224, 72, 74, 0.3); }
+
+/* --- onglets multi-athlètes (follower) --- */
+.follow-tabs {
+  flex: none; display: flex; gap: 6px; align-items: center;
+  padding: 6px 8px; background: var(--panel); border-bottom: 1px solid var(--line);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.follow-tabs::-webkit-scrollbar { display: none; }
+.ftab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  max-width: 190px; white-space: nowrap;
+}
+.ftab.active { background: var(--blue); color: #fff; border-color: transparent; }
+.ft-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.ft-dot.on { background: #ff4d4d; box-shadow: 0 0 0 3px rgba(255,77,77,0.25); }
+.ftab.active .ft-dot { background: rgba(255,255,255,0.6); }
+.ftab.active .ft-dot.on { background: #fff; }
+.ft-x { margin-left: 2px; opacity: 0.6; font-size: 11px; }
+.ft-x:active { opacity: 1; }
+.ftab-add {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--panel-2); color: var(--text); border: 1px dashed var(--line);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}

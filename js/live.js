@@ -6,6 +6,34 @@ import { SB_URL, SB_KEY, apiFetch, getSession } from './auth.js';
 
 const BUCKET = 'runnav-media';
 
+// ------------------------------------------------------------ CODE DE SUIVI (follower)
+/** Résout un code de suivi → { name, track } (nom de l'épreuve + trace), ou null.
+    Ne renvoie PAS la config éditable : un follower regarde, il n'importe rien. */
+export async function resolveFollow(followCode) {
+  const res = await apiFetch('/rest/v1/rpc/runnav_get_by_follow', {
+    method: 'POST',
+    body: JSON.stringify({ p_follow_code: String(followCode || '').trim().toUpperCase() }),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return (Array.isArray(rows) ? rows[0] : rows) || null;
+}
+/** Fixe le code de suivi d'une épreuve (réservé au propriétaire via RLS). */
+export async function setFollowCode(raceCode, followCode) {
+  const res = await apiFetch(`/rest/v1/runnav_configs?code=eq.${encodeURIComponent(raceCode)}`, {
+    method: 'PATCH', headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ follow_code: followCode }),
+  });
+  return res.ok;
+}
+/** Récupère le code de suivi existant d'une épreuve (propriétaire). */
+export async function getFollowCode(raceCode) {
+  const res = await apiFetch(`/rest/v1/runnav_configs?code=eq.${encodeURIComponent(raceCode)}&select=follow_code`, { method: 'GET' });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return (rows[0] && rows[0].follow_code) || null;
+}
+
 // ------------------------------------------------------------ POSITION LIVE (athlète)
 export async function broadcastPosition(code, pos) {
   const body = { code, ...pos, updated_at: new Date().toISOString() };
