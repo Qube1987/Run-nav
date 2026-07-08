@@ -395,7 +395,7 @@ body { overflow: hidden; }
   background: var(--panel-2); border: none; color: var(--muted);
   width: 32px; height: 32px; border-radius: 50%; font-size: 15px; cursor: pointer;
 }
-.sheet-body { overflow-y: auto; padding: 16px 18px 22px; }
+.sheet-body { overflow-y: auto; padding: 16px 18px 22px; flex: 1 1 auto; min-height: 0; }
 
 .field { margin-bottom: 16px; }
 .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
@@ -738,13 +738,57 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 /* --- boîte de réception (encouragements) --- */
 .inbox-list { display: flex; flex-direction: column; gap: 8px; }
 .cheer-row {
-  display: flex; gap: 10px; align-items: baseline;
+  display: flex; flex-direction: column; gap: 6px;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px;
 }
+.cheer-main { display: flex; gap: 10px; align-items: baseline; }
 .cheer-row.like { border-color: rgba(255,90,60,0.4); }
+.cheer-row.open { border-color: var(--blue); }
+.inbox-list .cheer-row[data-row] { cursor: pointer; }
 .cheer-who { font-weight: 700; color: var(--text); flex: none; }
 .cheer-txt { flex: 1; color: var(--text); word-break: break-word; }
 .cheer-when { flex: none; font-size: 11px; color: var(--muted); }
+.cheer-reply {
+  font-size: 13px; color: var(--muted); padding: 4px 8px; border-left: 2px solid var(--blue);
+  margin-left: 2px; word-break: break-word;
+}
+/* réponse de l'athlète à un follower */
+.reply-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-top: 4px; }
+.reply-heart {
+  background: rgba(255,90,60,0.14); border: 1px solid rgba(255,90,60,0.4); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; flex: none;
+}
+.reply-heart:active { opacity: 0.7; }
+.reply-input {
+  flex: 1; min-width: 120px; padding: 8px 10px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 15px;
+}
+.reply-input:focus { outline: none; border-color: var(--blue); }
+.reply-send {
+  background: var(--blue); border: none; color: #fff; border-radius: 9px;
+  padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer; flex: none;
+}
+.reply-send:active { opacity: 0.8; }
+.msg-tag {
+  font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 7px; vertical-align: middle;
+}
+.msg-tag.priv { background: rgba(122,92,255,0.2); color: #b6a4ff; }
+.msg-tag.all { background: rgba(63,191,111,0.18); color: #7be0a4; }
+/* barre « message à tous » en bas de la boîte Followers */
+.inbox-compose {
+  display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line);
+  background: var(--panel); flex: none;
+}
+.inbox-compose input {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 15px;
+}
+.inbox-compose input:focus { outline: none; border-color: var(--blue); }
+.inbox-compose button {
+  background: var(--blue); border: none; color: #fff; border-radius: 10px;
+  padding: 0 14px; font-size: 14px; font-weight: 700; cursor: pointer; flex: none;
+}
+.inbox-compose button:active { opacity: 0.8; }
 
 /* --- sections de la feuille Followers --- */
 .inbox-section {

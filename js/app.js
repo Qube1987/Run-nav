@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v50';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -145,15 +145,20 @@ function init() {
   $('media-input').addEventListener('change', onMediaPicked);
   $('act-inbox').addEventListener('click', openInbox);
   $('live-share').addEventListener('click', shareLive);
-  $('live-inbox').addEventListener('click', openInbox);
+  $('live-inbox').addEventListener('click', () => (state.mode === 'follower' ? openFollowerMessages() : openInbox()));
   $('live-feed').addEventListener('click', openMediaFeed);
   $('media-strip').addEventListener('click', (e) => {
     const t = e.target.closest('.ms-thumb');
     if (t) openMediaFromRow(findMedia(t.dataset.id));
   });
   $('mv-del').addEventListener('click', deleteViewedMedia);
+  // Athlète : répondre à un follower (clic sur son message) + message à tous
+  $('inbox-list').addEventListener('click', onInboxListClick);
+  $('bcast-send').addEventListener('click', sendBroadcast);
+  $('bcast-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBroadcast(); });
   document.querySelectorAll('[data-mclose]').forEach((el) => el.addEventListener('click', () => { $('media-sheet').hidden = true; }));
   document.querySelectorAll('[data-iclose]').forEach((el) => el.addEventListener('click', () => { $('inbox-sheet').hidden = true; }));
+  document.querySelectorAll('[data-fclose]').forEach((el) => el.addEventListener('click', () => { $('fmsg-sheet').hidden = true; }));
   document.querySelectorAll('[data-vclose]').forEach((el) => el.addEventListener('click', () => { $('media-view').hidden = true; $('mv-body').innerHTML = ''; }));
   $('media-list').addEventListener('click', onMediaListClick);
 
@@ -1859,21 +1864,23 @@ async function pollInbox() {
   let list;
   try { list = await fetchCheers(fc); } catch (_) { return; }
   state._cheers = list;
+  const incoming = incomingCheers(list); // messages des followers seulement (pas les miens)
   if (state._inboxLoaded) {
-    const news = list.filter((c) => !state.seenCheers.has(c.id));
+    const news = incoming.filter((c) => !state.seenCheers.has(c.id));
     if (news.length) {
       state.newInbox += news.length;
       const c = news[0];
       notify('💬 ' + (c.author || 'Supporter'), c.is_like ? 'a envoyé un ❤️' : (c.text || ''));
     }
   }
-  list.forEach((c) => state.seenCheers.add(c.id));
+  incoming.forEach((c) => state.seenCheers.add(c.id));
   state._inboxLoaded = true;
   // liste de ceux qui te suivent
   try {
     state._followers = await fetchFollowers(fc);
     if ($('inbox-sheet') && !$('inbox-sheet').hidden) renderFollowers(state._followers);
   } catch (_) { /* ignore */ }
+  if ($('inbox-sheet') && !$('inbox-sheet').hidden) renderInbox(list);
   updateInboxBadge();
   // l'athlète voit aussi ses propres médias sur la carte / le profil
   try {
@@ -1883,8 +1890,9 @@ async function pollInbox() {
     updateFeedBadge();
   } catch (_) { /* ignore */ }
 }
+function incomingCheers(list) { return (list || []).filter((c) => c.sender !== 'athlete'); }
 function updateInboxBadge() {
-  const n = state._cheers ? state._cheers.length : 0;
+  const n = incomingCheers(state._cheers).length;
   $('inbox-count').textContent = n;
   $('live-inbox').classList.toggle('has-new', state.newInbox > 0);
   const b = $('act-inbox-badge');
@@ -1919,12 +1927,125 @@ function renderFollowers(list) {
   }).join('');
 }
 function renderInbox(list) {
-  $('inbox-empty').hidden = list.length > 0;
-  $('inbox-list').innerHTML = list.map((c) => `<div class="cheer-row${c.is_like ? ' like' : ''}">
-      <span class="cheer-who">${escapeHtml(c.author || 'Supporter')}</span>
-      <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
-      <span class="cheer-when">${fmtAgo(c.created_at)}</span>
-    </div>`).join('');
+  list = list || [];
+  const incoming = incomingCheers(list);
+  // réponses/❤️ de l'athlète indexés par message d'origine
+  const repliesByMsg = {};
+  list.filter((c) => c.sender === 'athlete' && c.reply_to).forEach((c) => {
+    (repliesByMsg[c.reply_to] = repliesByMsg[c.reply_to] || []).push(c);
+  });
+  $('inbox-empty').hidden = incoming.length > 0;
+  $('inbox-list').innerHTML = incoming.map((c) => {
+    const replies = (repliesByMsg[c.id] || [])
+      .map((r) => `<div class="cheer-reply">↳ ${r.is_like ? '❤️' : ''} ${escapeHtml(r.text || '')}</div>`).join('');
+    const open = state._replyTo === c.id;
+    const who = c.author || 'Supporter';
+    const box = open ? `<div class="reply-box">
+        <button class="reply-heart" data-heart="${escAttr(c.id)}" data-to="${escAttr(who)}">❤️ Remercier</button>
+        <input class="reply-input" data-in="${escAttr(c.id)}" maxlength="200" placeholder="Répondre à ${escAttr(who)} en privé…" />
+        <button class="reply-send" data-send="${escAttr(c.id)}" data-to="${escAttr(who)}">Envoyer</button>
+      </div>` : '';
+    return `<div class="cheer-row${c.is_like ? ' like' : ''}${open ? ' open' : ''}" data-row="${escAttr(c.id)}">
+      <div class="cheer-main">
+        <span class="cheer-who">${escapeHtml(who)}</span>
+        <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
+        <span class="cheer-when">${fmtAgo(c.created_at)}</span>
+      </div>
+      ${replies}${box}
+    </div>`;
+  }).join('');
+}
+async function onInboxListClick(e) {
+  const heart = e.target.closest('[data-heart]');
+  if (heart) { await athleteReply(heart.dataset.heart, heart.dataset.to, { is_like: true }); return; }
+  const send = e.target.closest('[data-send]');
+  if (send) {
+    const inp = $('inbox-list').querySelector(`[data-in="${send.dataset.send}"]`);
+    const text = inp ? inp.value.trim() : '';
+    if (!text) { toast('Écris un message.'); return; }
+    await athleteReply(send.dataset.send, send.dataset.to, { text });
+    return;
+  }
+  if (e.target.closest('.reply-box')) return; // clic dans l'input : on ne referme pas
+  const row = e.target.closest('[data-row]');
+  if (row) {
+    state._replyTo = state._replyTo === row.dataset.row ? null : row.dataset.row;
+    renderInbox(state._cheers || []);
+  }
+}
+async function athleteReply(replyToId, toPseudo, { is_like, text }) {
+  const fc = state.myFollowCode;
+  if (!fc) { toast('Active le partage pour répondre.'); return; }
+  const ok = await postCheer(fc, {
+    author: myDisplayName(), sender: 'athlete', target: toPseudo || null,
+    reply_to: replyToId || null, is_like: !!is_like, text: text || null,
+  });
+  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
+  state._replyTo = null;
+  toast(is_like ? '❤️ Remerciement envoyé' : '💬 Réponse envoyée en privé');
+  try { state._cheers = await fetchCheers(fc); } catch (_) { /* garde l'ancienne liste */ }
+  renderInbox(state._cheers || []);
+}
+async function sendBroadcast() {
+  const fc = state.myFollowCode || (state.mode === 'athlete' ? await ensureFollowCode().catch(() => null) : null);
+  if (!fc) { toast('Active le partage pour écrire à tes followers.'); return; }
+  const inp = $('bcast-input'); const text = (inp.value || '').trim();
+  if (!text) return;
+  const ok = await postCheer(fc, { author: myDisplayName(), sender: 'athlete', target: null, text });
+  if (!ok) { toast('Échec de l’envoi (réseau ?).'); return; }
+  inp.value = '';
+  toast('📣 Message envoyé à tous tes followers');
+  try { state._cheers = await fetchCheers(fc); } catch (_) { /* ignore */ }
+  renderInbox(state._cheers || []);
+}
+
+// --- Côté follower : messages reçus de l'athlète ---
+function athleteMsgsFor(list) {
+  const me = (state.followPseudo || '').trim();
+  return (list || []).filter((c) => c.sender === 'athlete' && (!c.target || c.target === me));
+}
+function handleAthleteMessages(list) {
+  const msgs = athleteMsgsFor(list);
+  state._fmsgs = msgs;
+  if (state._fmsgsLoaded) {
+    const news = msgs.filter((c) => !state.seenFmsg.has(c.id));
+    if (news.length) {
+      state.newFmsg = (state.newFmsg || 0) + news.length;
+      const c = news[0];
+      const live = state._followLive[state.followCode];
+      const who = (live && live.athlete_name) || 'L’athlète';
+      notify('💬 ' + who, c.is_like ? 't’a envoyé un ❤️' : (c.text || ''));
+    }
+  }
+  msgs.forEach((c) => state.seenFmsg.add(c.id));
+  state._fmsgsLoaded = true;
+  updateFollowerMsgBadge();
+  if (!$('fmsg-sheet').hidden) renderFollowerMessages(msgs);
+}
+function updateFollowerMsgBadge() {
+  $('inbox-count').textContent = (state._fmsgs || []).length;
+  $('live-inbox').classList.toggle('has-new', (state.newFmsg || 0) > 0);
+}
+async function openFollowerMessages() {
+  state.newFmsg = 0; updateFollowerMsgBadge();
+  let list = state._fmsgs;
+  if (!list) { try { list = athleteMsgsFor(await fetchCheers(state.followCode)); state._fmsgs = list; } catch (_) { list = []; } }
+  renderFollowerMessages(list || []);
+  $('fmsg-sheet').hidden = false;
+}
+function renderFollowerMessages(list) {
+  list = list || [];
+  $('fmsg-empty').hidden = list.length > 0;
+  $('fmsg-list').innerHTML = list.map((c) => {
+    const tag = c.target ? '<span class="msg-tag priv">privé</span>' : '<span class="msg-tag all">à tous</span>';
+    return `<div class="cheer-row${c.is_like ? ' like' : ''}">
+      <div class="cheer-main">
+        <span class="cheer-who">${escapeHtml(c.author || 'Athlète')} ${tag}</span>
+        <span class="cheer-txt">${c.is_like ? '❤️' : escapeHtml(c.text || '')}</span>
+        <span class="cheer-when">${fmtAgo(c.created_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ------------------------------------------------------- FOLLOWER
@@ -2030,11 +2151,14 @@ function enterFollowerMode() {
   state.follow = false;
   state.seenMedia = new Set(); state._mediaLoaded = false;
   state.newFeed = 0; state._media = null;
+  // messages reçus de l'athlète focalisé : on repart propre à chaque changement d'athlète
+  state.seenFmsg = new Set(); state._fmsgsLoaded = false; state.newFmsg = 0; state._fmsgs = null;
   refreshMediaMarkers([]);
   ensureNotifyPermission();
   $('live-banner').hidden = false;
   $('follow-geo').hidden = false;
   updateFollowerBanner(state._followLive[state.followCode] || null);
+  updateFollowerMsgBadge();
   renderFollowTabs();
   renderAllAthletes();
   // présence immédiate : l'athlète voit tout de suite qui le suit
@@ -2146,6 +2270,8 @@ async function pollFollower() {
     if (active && active.lat != null) renderAthletePosition(active);
     const media = await fetchMedia(state.followCode);
     handleFollowerMedia(media);
+    // messages laissés par l'athlète (broadcast + réponses privées à moi)
+    try { handleAthleteMessages(await fetchCheers(state.followCode)); } catch (_) { /* ignore */ }
   } catch (_) { /* réseau : on réessaiera au prochain tick */ }
 }
 
@@ -2179,7 +2305,7 @@ function updateFollowerBanner(live) {
   const b = $('live-banner');
   b.hidden = false;
   $('live-feed').hidden = false;
-  $('live-inbox').hidden = true;
+  $('live-inbox').hidden = false; // 💬 : messages laissés par l'athlète
   $('live-share').hidden = false;
   $('follow-geo').hidden = false;
   const focused = state.follows.find((f) => f.code === state.followCode);

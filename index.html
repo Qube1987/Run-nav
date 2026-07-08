@@ -357,6 +357,26 @@
         <p class="hint" id="inbox-empty" hidden>Aucun message pour l'instant. Partage ton code à tes supporters !</p>
         <div id="inbox-list" class="inbox-list"></div>
       </div>
+      <!-- Message à tous les followers (broadcast) -->
+      <div class="inbox-compose">
+        <input id="bcast-input" type="text" maxlength="200" placeholder="Un mot à tous tes followers…" />
+        <button id="bcast-send" type="button">Envoyer à tous</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages de l'athlète (côté follower) -->
+  <div id="fmsg-sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-fclose></div>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>💬 Messages de l'athlète</h2>
+        <button class="sheet-close" data-fclose type="button">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="hint" id="fmsg-empty" hidden>Aucun message de l'athlète pour l'instant.</p>
+        <div id="fmsg-list" class="inbox-list"></div>
+      </div>
     </div>
   </div>
 
