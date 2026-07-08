@@ -47,7 +47,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -143,6 +143,7 @@ function init() {
   $('media-list').addEventListener('click', onMediaListClick);
 
   $('follow-geo').addEventListener('click', toggleFollowerGeo);
+  $('follow-awake').addEventListener('click', toggleKeepAwake);
   // Follower : encouragements
   $('cheer-like').addEventListener('click', () => sendCheer({ is_like: true }));
   $('cheer-send').addEventListener('click', () => sendCheer({ text: $('cheer-input').value }));
@@ -1591,6 +1592,40 @@ function applyModeUI() {
 function ensureNotifyPermission() {
   try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (_) { /* ignore */ }
 }
+
+// --- Wake Lock : empêche l'écran de s'éteindre pendant le suivi ---
+let _wakeLock = null;
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+      return true;
+    }
+  } catch (_) { _wakeLock = null; }
+  return false;
+}
+async function releaseWakeLock() {
+  try { if (_wakeLock) await _wakeLock.release(); } catch (_) { /* ignore */ }
+  _wakeLock = null;
+}
+// Android relâche le verrou quand l'appli passe en arrière-plan : on le reprend au retour.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.keepAwake && !_wakeLock) acquireWakeLock();
+});
+async function toggleKeepAwake() {
+  if (!state.keepAwake) {
+    if (!('wakeLock' in navigator)) { toast('Ton navigateur ne gère pas le maintien de l’écran. Règle plutôt l’extinction d’écran dans Android.'); return; }
+    state.keepAwake = true;
+    await acquireWakeLock();
+    toast('🔆 Écran maintenu allumé tant que tu suis l’athlète.');
+  } else {
+    state.keepAwake = false;
+    await releaseWakeLock();
+    toast('Écran libéré (veille normale).');
+  }
+  const b = $('follow-awake'); if (b) b.classList.toggle('active', state.keepAwake);
+}
 function notify(title, body) {
   try {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -1654,7 +1689,8 @@ function updateLiveBanner() {
   const b = $('live-banner');
   if (!state.cloudCode) { b.hidden = true; return; }
   b.hidden = false;
-  $('follow-geo').hidden = true; // (follower uniquement)
+  $('follow-geo').hidden = true;   // (follower uniquement)
+  $('follow-awake').hidden = true; // (follower uniquement)
   $('live-share').hidden = false;
   $('live-inbox').hidden = false;
   $('live-feed').hidden = false;
@@ -1835,6 +1871,7 @@ function startFollowerPolling() {
 }
 function stopFollowerPolling() {
   if (state._liveT) { clearInterval(state._liveT); state._liveT = null; }
+  if (state.keepAwake) { state.keepAwake = false; releaseWakeLock(); }
   if (state.followerWatchId != null) {
     try { navigator.geolocation.clearWatch(state.followerWatchId); } catch (_) { /* ignore */ }
     state.followerWatchId = null; state.followerPos = null; state._lastDist = null;
@@ -1858,6 +1895,7 @@ function updateFollowerBanner(live) {
   $('live-inbox').hidden = true;
   $('live-share').hidden = false;
   $('follow-geo').hidden = false;
+  $('follow-awake').hidden = false;
   const name = (live && live.athlete_name) || state.track.name || 'Athlète';
   const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
   // distance athlète ↔ moi (si le follower a activé sa position)
