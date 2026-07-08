@@ -2,9 +2,47 @@
 // Lecture publique par « code » de course ; écriture position/média réservée à
 // l'athlète connecté ; encouragements ouverts (follower avec simple pseudo).
 
-import { SB_URL, SB_KEY, apiFetch, getSession } from './auth.js';
+import { SB_URL, SB_KEY, apiFetch, getSession, currentUserId } from './auth.js';
 
 const BUCKET = 'runnav-media';
+
+// ------------------------------------------------------------ PROFIL ATHLÈTE (nom, prénom, photo)
+export async function fetchMyProfile() {
+  const uid = currentUserId();
+  if (!uid) return null;
+  const res = await apiFetch(`/rest/v1/runnav_profiles?user_id=eq.${uid}&select=first_name,last_name,avatar_path`, { method: 'GET' });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows[0] || null;
+}
+export async function saveMyProfile(p) {
+  const uid = currentUserId();
+  if (!uid) throw new Error('Non connecté.');
+  const body = {
+    user_id: uid, first_name: p.first_name || null, last_name: p.last_name || null,
+    avatar_path: p.avatar_path || null, updated_at: new Date().toISOString(),
+  };
+  const res = await apiFetch('/rest/v1/runnav_profiles?on_conflict=user_id', {
+    method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Enregistrement du profil échoué (' + res.status + ')');
+  return true;
+}
+export async function uploadAvatar(file) {
+  const s = getSession();
+  if (!s || !s.access_token) throw new Error('Non connecté.');
+  const ext = (file.name && file.name.includes('.') ? file.name.split('.').pop() : 'jpg').toLowerCase();
+  const path = `avatars/${s.user_id}-${Date.now()}.${ext}`;
+  const up = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
+    method: 'POST',
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${s.access_token}`, 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
+    body: file,
+  });
+  if (!up.ok) throw new Error('Upload photo échoué (' + up.status + ')');
+  return path;
+}
+export function avatarUrl(path) { return path ? mediaUrl(path) : null; }
 
 // ------------------------------------------------------------ CODE DE SUIVI (follower)
 /** Résout un code de suivi → { name, track } (nom de l'épreuve + trace), ou null.

@@ -45,21 +45,27 @@
 
       <div class="welcome-sep"><span>ou lance ta propre course</span></div>
 
-      <div class="activity-pick">
-        <span class="activity-label">Type d'activité</span>
-        <div class="seg">
-          <button class="seg-btn active" data-activity="run" type="button">🏃 Course / trail</button>
-          <button class="seg-btn" data-activity="bike" type="button">🚴 Vélo</button>
+      <!-- Lancer sa course : réservé aux athlètes inscrits -->
+      <div id="athlete-tools" class="athlete-tools" hidden>
+        <div class="activity-pick">
+          <span class="activity-label">Type d'activité</span>
+          <div class="seg">
+            <button class="seg-btn active" data-activity="run" type="button">🏃 Course / trail</button>
+            <button class="seg-btn" data-activity="bike" type="button">🚴 Vélo</button>
+          </div>
         </div>
+
+        <label class="upload-btn" for="gpx-input">
+          <span class="upload-icon">📂</span>
+          Charger un fichier GPX
+        </label>
+        <input id="gpx-input" type="file" accept=".gpx,application/gpx+xml,text/xml" hidden />
+
+        <button id="demo-btn" class="ghost-btn" type="button">Essayer avec un parcours démo</button>
       </div>
 
-      <label class="upload-btn" for="gpx-input">
-        <span class="upload-icon">📂</span>
-        Charger un fichier GPX
-      </label>
-      <input id="gpx-input" type="file" accept=".gpx,application/gpx+xml,text/xml" hidden />
-
-      <button id="demo-btn" class="ghost-btn" type="button">Essayer avec un parcours démo</button>
+      <!-- Invitation à s'inscrire pour lancer sa course -->
+      <p id="athlete-gate" class="athlete-gate hint">Crée un compte (ci-dessous) pour charger ta trace GPX et lancer ta course. Le suivi d'un athlète, lui, reste ouvert à tous.</p>
 
       <!-- Compte : mémoriser ses épreuves -->
       <div id="auth-box" class="auth-box">
@@ -80,8 +86,11 @@
         <!-- connecté -->
         <div id="auth-in" class="auth-in" hidden>
           <div class="auth-who">
-            <span>👤 <strong id="auth-name">—</strong></span>
-            <button id="auth-logout" class="link-btn" type="button">Se déconnecter</button>
+            <span id="auth-ident">👤 <strong id="auth-name">—</strong></span>
+            <span class="auth-who-actions">
+              <button id="profile-btn" class="link-btn" type="button">Mon profil</button>
+              <button id="auth-logout" class="link-btn" type="button">Déconnexion</button>
+            </span>
           </div>
           <div class="races-head">
             <span>Mes épreuves</span>
@@ -342,6 +351,35 @@
       <div class="sheet-body">
         <p class="hint" id="inbox-empty" hidden>Aucun message pour l'instant. Partage ton code à tes supporters !</p>
         <div id="inbox-list" class="inbox-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mon profil (nom, prénom, photo) -->
+  <div id="profile-sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-pclose></div>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>👤 Mon profil</h2>
+        <button class="sheet-close" data-pclose type="button">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div class="prof-avatar-row">
+          <div id="prof-avatar" class="prof-avatar" aria-hidden="true">🙂</div>
+          <label class="prof-photo-btn" for="prof-file">📷 Choisir une photo</label>
+          <input id="prof-file" type="file" accept="image/*" hidden />
+        </div>
+        <label class="prof-field">
+          <span>Prénom</span>
+          <input id="prof-first" type="text" maxlength="40" placeholder="Ton prénom" />
+        </label>
+        <label class="prof-field">
+          <span>Nom</span>
+          <input id="prof-last" type="text" maxlength="40" placeholder="Ton nom" />
+        </label>
+        <p class="hint">Ce nom et cette photo apparaissent auprès de tes followers pendant le suivi live.</p>
+        <button id="prof-save" class="wide-btn" type="button">💾 Enregistrer</button>
+        <p id="prof-error" class="welcome-error" hidden></p>
       </div>
     </div>
   </div>

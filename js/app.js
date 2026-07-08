@@ -24,6 +24,7 @@ import {
   uploadMedia, fetchMedia, deleteMedia, mediaUrl,
   postCheer, fetchCheers,
   resolveFollow, setFollowCode, getFollowCode,
+  fetchMyProfile, saveMyProfile, uploadAvatar, avatarUrl,
 } from './live.js';
 
 const $ = (id) => document.getElementById(id);
@@ -48,7 +49,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -105,6 +106,7 @@ const state = {
   seenCheers: new Set(),// ids d'encouragements déjà vus (notif)
   lastCheerIso: null,
   newFeed: 0, newInbox: 0,
+  myProfile: null,      // athlète connecté : { first_name, last_name, avatar_path }
   _liveT: null, _mediaT: null, _cheerT: null,
   // persistance
   gpxKey: null,
@@ -166,6 +168,12 @@ function init() {
   $('races-refresh').addEventListener('click', loadRaces);
   $('races-list').addEventListener('click', onRacesClick);
   updateAuthUI();
+
+  // Mon profil (nom, prénom, photo)
+  $('profile-btn').addEventListener('click', openProfileSheet);
+  $('prof-save').addEventListener('click', saveProfile);
+  $('prof-file').addEventListener('change', onProfilePhoto);
+  document.querySelectorAll('[data-pclose]').forEach((el) => el.addEventListener('click', closeProfileSheet));
 
   $('act-start').addEventListener('click', toggleTracking);
   $('act-wpt').addEventListener('click', addWaypointAtCursor);
@@ -1114,10 +1122,95 @@ function updateAuthUI() {
   const on = isLoggedIn();
   $('auth-out').hidden = on;
   $('auth-in').hidden = !on;
+  // Lancer sa course est réservé aux athlètes inscrits ; le suivi reste ouvert à tous.
+  const tools = $('athlete-tools'); if (tools) tools.hidden = !on;
+  const gate = $('athlete-gate'); if (gate) gate.hidden = on;
   showAuthError('');
   if (on) {
     $('auth-name').textContent = currentUser() || '—';
     loadRaces();
+    loadMyProfile();
+  } else {
+    state.myProfile = null;
+  }
+}
+
+/** Nom affiché de l'athlète auprès des followers : prénom+nom du profil, sinon identifiant. */
+function myDisplayName() {
+  const p = state.myProfile;
+  if (p) {
+    const nm = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+    if (nm) return nm;
+  }
+  return currentUser() || 'Athlète';
+}
+
+/** Charge le profil (nom, prénom, photo) du compte connecté et met à jour le libellé. */
+async function loadMyProfile() {
+  try {
+    state.myProfile = await fetchMyProfile();
+    if (state.myProfile) {
+      const nm = [state.myProfile.first_name, state.myProfile.last_name].filter(Boolean).join(' ').trim();
+      if (nm) $('auth-name').textContent = nm;
+    }
+  } catch (_) { /* non bloquant */ }
+}
+
+// --- Feuille « Mon profil » ---
+let _pendingAvatar = null; // chemin d'une photo tout juste téléversée, en attente d'enregistrement
+
+function renderProfAvatar(url) {
+  const el = $('prof-avatar');
+  if (url) { el.style.backgroundImage = `url('${String(url).replace(/'/g, '%27')}')`; el.classList.add('has-photo'); el.textContent = ''; }
+  else { el.style.backgroundImage = ''; el.classList.remove('has-photo'); el.textContent = '🙂'; }
+}
+function openProfileSheet() {
+  const p = state.myProfile || {};
+  $('prof-first').value = p.first_name || '';
+  $('prof-last').value = p.last_name || '';
+  $('prof-error').hidden = true;
+  _pendingAvatar = null;
+  renderProfAvatar(p.avatar_path ? avatarUrl(p.avatar_path) : null);
+  $('profile-sheet').hidden = false;
+}
+function closeProfileSheet() { $('profile-sheet').hidden = true; }
+async function onProfilePhoto(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const err = $('prof-error'); err.hidden = true;
+  try {
+    renderProfAvatar(URL.createObjectURL(file)); // aperçu immédiat
+    _pendingAvatar = await uploadAvatar(file);
+  } catch (ex) {
+    err.textContent = ex.message || 'Envoi de la photo impossible.'; err.hidden = false;
+  }
+}
+async function saveProfile() {
+  const btn = $('prof-save'); const prev = btn.textContent;
+  const err = $('prof-error'); err.hidden = true;
+  const p = {
+    first_name: $('prof-first').value.trim(),
+    last_name: $('prof-last').value.trim(),
+    avatar_path: _pendingAvatar || (state.myProfile && state.myProfile.avatar_path) || null,
+  };
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try {
+    await saveMyProfile(p);
+    state.myProfile = p;
+    _pendingAvatar = null;
+    const nm = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+    $('auth-name').textContent = nm || currentUser() || '—';
+    // rediffuse le nom/photo à jour si un live est en cours
+    if (state.liveOn && state.myFollowCode) {
+      broadcastPosition(state.myFollowCode, { athlete_name: myDisplayName(), active: true }).catch(() => {});
+    }
+    closeProfileSheet();
+    toast('Profil enregistré.');
+  } catch (ex) {
+    err.textContent = ex.message || 'Enregistrement impossible.'; err.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
   }
 }
 
@@ -1669,7 +1762,7 @@ async function startLiveBroadcast() {
   try { fc = await ensureFollowCode(); } catch (_) { toast('Impossible de démarrer le live (réseau ?).'); return; }
   state.liveOn = true;
   state._liveLastSent = 0;
-  broadcastPosition(fc, { athlete_name: currentUser() || 'Athlète', active: true }).catch(() => {});
+  broadcastPosition(fc, { athlete_name: myDisplayName(), active: true }).catch(() => {});
   ensureNotifyPermission();
   startInboxPolling();
   updateLiveBanner();
@@ -1688,7 +1781,7 @@ function maybeBroadcast(lat, lon, d, ele) {
   if (now - state._liveLastSent < 5000) return;
   state._liveLastSent = now;
   broadcastPosition(state.myFollowCode, {
-    athlete_name: currentUser() || 'Athlète',
+    athlete_name: myDisplayName(),
     lat, lon, d, ele, speed: state.liveSpeed || 0, active: true,
   }).catch(() => {});
 }
@@ -1834,9 +1927,11 @@ async function followAthlete(code, pseudo) {
   if (!t || !Array.isArray(t.pts) || t.pts.length < 2) { showWelcomeError('Cet athlète n’a pas de trace partagée.'); return false; }
   state.followPseudo = pseudo; localSet('pseudo', pseudo);
   state._followTracks[code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: row.name || 'Course' };
+  const aName = (row.athlete_name || '').trim() || null;
+  const avatar = row.avatar_path || null;
   let idx = state.follows.findIndex((f) => f.code === code);
-  if (idx < 0) { state.follows.push({ code, name: row.name || 'Course' }); idx = state.follows.length - 1; saveFollows(); }
-  else { state.follows[idx].name = row.name || state.follows[idx].name; saveFollows(); }
+  if (idx < 0) { state.follows.push({ code, name: row.name || 'Course', athleteName: aName, avatar }); idx = state.follows.length - 1; saveFollows(); }
+  else { state.follows[idx].name = row.name || state.follows[idx].name; state.follows[idx].athleteName = aName || state.follows[idx].athleteName; state.follows[idx].avatar = avatar || state.follows[idx].avatar; saveFollows(); }
   await openFollowAthlete(idx);
   return true;
 }
@@ -1850,7 +1945,12 @@ async function openFollowAthlete(idx) {
     if (typeof t === 'string') { try { t = JSON.parse(t); } catch (_) { t = null; } }
     if (!t || !Array.isArray(t.pts) || t.pts.length < 2) { toast(`« ${f.name} » indisponible.`); return; }
     state._followTracks[f.code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: (row && row.name) || f.name };
-    if (row && row.name) { f.name = row.name; saveFollows(); }
+    if (row) {
+      if (row.name) f.name = row.name;
+      if ((row.athlete_name || '').trim()) f.athleteName = row.athlete_name.trim();
+      if (row.avatar_path) f.avatar = row.avatar_path;
+      saveFollows();
+    }
   }
   const cached = state._followTracks[f.code];
   const track = buildTrack(cached.rawPoints);
@@ -1992,6 +2092,7 @@ function renderAllAthletes() {
     return {
       code: f.code, lat: live.lat, lon: live.lon,
       name: escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
+      avatar: f.avatar ? avatarUrl(f.avatar) : null,
       color: athColor(i), active: on, focused: f.code === state.followCode,
     };
   }).filter(Boolean);
@@ -2007,7 +2108,10 @@ function updateFollowerBanner(live) {
   $('live-inbox').hidden = true;
   $('live-share').hidden = false;
   $('follow-geo').hidden = false;
-  const name = (live && live.athlete_name) || state.track.name || 'Athlète';
+  const focused = state.follows.find((f) => f.code === state.followCode);
+  const name = (live && (live.athlete_name || '').trim())
+    || (focused && (focused.athleteName || '').trim())
+    || 'Athlète';
   const fresh = live && live.updated_at && (Date.now() - new Date(live.updated_at).getTime() < 120000);
   // distance athlète ↔ moi (si le follower a activé sa position)
   let meTxt = '';

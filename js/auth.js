@@ -13,11 +13,13 @@ function slugEmail(username) {
 }
 
 function saveSession(tok, username) {
+  const prev = getSession();
   const s = {
     access_token: tok.access_token,
     refresh_token: tok.refresh_token,
     expires_at: Date.now() + (tok.expires_in || 3600) * 1000,
     username,
+    user_id: (tok.user && tok.user.id) || (prev && prev.user_id) || null,
   };
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (_) { /* ignore */ }
   return s;
@@ -30,6 +32,7 @@ export function getSession() {
 export function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch (_) { /* ignore */ } }
 export function isLoggedIn() { return !!getSession(); }
 export function currentUser() { const s = getSession(); return s ? s.username : null; }
+export function currentUserId() { const s = getSession(); return s ? s.user_id : null; }
 
 async function jsonOrEmpty(res) { try { return await res.json(); } catch (_) { return {}; } }
 

@@ -136,9 +136,11 @@ export class RaceMap {
     this.athLayer.clearLayers();
     for (const a of (list || [])) {
       if (a.lat == null || a.lon == null) continue;
-      const cls = 'ath-pin' + (a.focused ? ' focused' : '') + (a.active ? '' : ' off');
-      const html = `<div class="ath-wrap">`
-        + `<div class="${cls}" style="background:${a.color}"><span>${a.initial}</span></div>`
+      const cls = 'ath-pin' + (a.focused ? ' focused' : '') + (a.active ? '' : ' off') + (a.avatar ? ' photo' : '');
+      const inner = a.avatar
+        ? `<div class="${cls}" style="border-color:${a.color};background-image:url('${String(a.avatar).replace(/'/g, '%27')}')"></div>`
+        : `<div class="${cls}" style="background:${a.color}"><span>${a.initial}</span></div>`;
+      const html = `<div class="ath-wrap">` + inner
         + `<span class="ath-name">${a.name}</span></div>`;
       const mk = L.marker([a.lat, a.lon], {
         icon: L.divIcon({ className: 'ath-icon', html, iconSize: [34, 34], iconAnchor: [17, 17] }),
