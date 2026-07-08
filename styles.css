@@ -922,6 +922,10 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   background: var(--panel-2); color: var(--text); border: 1px dashed var(--line);
   font-size: 18px; line-height: 1; cursor: pointer;
 }
+.ftab-add.wide {
+  width: auto; height: auto; border-radius: 999px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; line-height: 1.2;
+}
 
 /* --- marqueurs de plusieurs athlètes sur la même carte --- */
 .ath-icon { text-align: center; overflow: visible; }

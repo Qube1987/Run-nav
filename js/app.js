@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -98,6 +98,9 @@ const state = {
   followPseudo: null,   // follower : pseudo
   follows: [],          // follower : liste [{code, name}] des athlètes suivis
   followActive: 0,      // follower : index de l'athlète affiché
+  mates: [],            // athlète : potes suivis pendant sa propre course [{code,name,athleteName,avatar}]
+  _matesLive: {},       // dernier live par code de pote
+  _matesT: null,        // timer de suivi des potes
   _followTracks: {},    // cache code → { rawPoints, name }
   _followLive: {},      // dernier live par code (pastilles des onglets)
   _statusT: null,       // timer de statut multi-athlètes
@@ -137,6 +140,7 @@ function init() {
   $('follow-tabs').addEventListener('click', onFollowTabsClick);
   $('resume-follow').addEventListener('click', resumeFollowing);
   state.follows = loadFollows();
+  state.mates = loadMates();
   state.followPseudo = localGet('pseudo') || null;
   updateResumeFollow();
 
@@ -445,7 +449,7 @@ function showWelcomeError(msg) {
 
 // ------------------------------------------------------------------ DÉMARRAGE APP
 function startApp(track) {
-  stopFollowerPolling(); stopInboxPolling(); // repart propre (changement d'épreuve)
+  stopFollowerPolling(); stopInboxPolling(); stopMatesPolling(); // repart propre (changement d'épreuve)
   state.track = track;
   state.climbs = detectClimbs(track.points);
   state.waypoints = autoWaypoints(track);
@@ -525,6 +529,8 @@ function startApp(track) {
   applyModeUI();
   // athlète déjà partagé : écoute les encouragements + affiche ses photos + bandeau
   if (state.mode === 'athlete' && state.cloudCode && isLoggedIn()) { startInboxPolling(); updateLiveBanner(); }
+  // athlète : barre « suivre un pote » + suivi live des potes ajoutés
+  if (state.mode === 'athlete') { renderMateBar(); startMatesPolling(); }
   if (state.mode === 'follower') return; // le message d'accueil est géré par le suivi live
   const restored = saved ? ' · réglages restaurés' : '';
   toast(`${track.name} · ${(track.total / 1000).toFixed(1)} km · ${track.gain} m D+${restored}`);
@@ -1714,6 +1720,7 @@ function applyModeUI() {
   const ab = document.querySelector('.actionbar');
   if (ab) ab.hidden = follower;
   $('cheer-wrap').hidden = !follower;
+  if (follower) stopMatesPolling(); // le suivi des potes est propre au mode athlète
   if (!follower) { $('live-banner').hidden = !state.liveOn; }
 }
 
@@ -2189,12 +2196,118 @@ function renderFollowTabs() {
   }).join('') + `<button class="ftab-add" data-add="1" title="Suivre un autre athlète">＋</button>`;
 }
 function onFollowTabsClick(e) {
+  if (state.mode === 'athlete') { onMateBarClick(e); return; }
   const x = e.target.closest('[data-x]');
   if (x) { e.stopPropagation(); removeFollow(+x.dataset.x); return; }
   const add = e.target.closest('[data-add]');
   if (add) { const c = prompt('Code de suivi de l’athlète :'); if (c) followAthlete(c, state.followPseudo); return; }
   const tab = e.target.closest('[data-i]');
   if (tab) { const i = +tab.dataset.i; if (i !== state.followActive) openFollowAthlete(i); }
+}
+
+// --- Athlète qui suit des potes sur la même course ---
+function loadMates() { try { return JSON.parse(localGet('mates') || '[]'); } catch (_) { return []; } }
+function saveMates() { localSet('mates', JSON.stringify(state.mates)); }
+
+/** Barre de potes (mode athlète) : chips + bouton d'ajout, dans #follow-tabs. */
+function renderMateBar() {
+  const el = $('follow-tabs');
+  if (!el) return;
+  if (state.mode !== 'athlete') return; // le mode follower gère #follow-tabs de son côté
+  const now = Date.now();
+  const chips = state.mates.map((m, i) => {
+    const live = state._matesLive[m.code];
+    const on = live && live.active && live.updated_at && (now - new Date(live.updated_at).getTime() < 120000);
+    const nm = (m.athleteName || m.name || m.code).trim();
+    return `<button class="ftab" data-mate="${i}">` +
+      `<span class="ft-dot${on ? ' on' : ''}" style="background:${athColor(i)}"></span>${escapeHtml(nm)}` +
+      `<span class="ft-x" data-mx="${i}" title="Retirer">✕</span></button>`;
+  }).join('');
+  const wide = state.mates.length ? '' : ' wide';
+  const addLabel = state.mates.length ? '＋' : '👀 Suivre un pote';
+  el.innerHTML = chips + `<button class="ftab-add${wide}" data-mateadd="1" title="Suivre un pote sur la course">${addLabel}</button>`;
+  el.hidden = false;
+}
+function onMateBarClick(e) {
+  const x = e.target.closest('[data-mx]');
+  if (x) { e.stopPropagation(); removeMate(+x.dataset.mx); return; }
+  const add = e.target.closest('[data-mateadd]');
+  if (add) { addMatePrompt(); return; }
+  const tab = e.target.closest('[data-mate]');
+  if (tab) focusMate(+tab.dataset.mate);
+}
+async function addMatePrompt() {
+  const code = prompt('Code de suivi de ton pote :');
+  if (code) await addMate(code);
+}
+async function addMate(code) {
+  code = (code || '').trim().toUpperCase();
+  if (code.length < 4) { toast('Code de suivi invalide.'); return; }
+  if (code === state.myFollowCode) { toast('C’est ton propre code 🙂'); return; }
+  if (state.mates.some((m) => m.code === code)) { toast('Ce pote est déjà dans ta liste.'); return; }
+  const row = await resolveFollow(code);
+  if (!row) { toast('Code de suivi introuvable.'); return; }
+  const aName = (row.athlete_name || '').trim() || null;
+  state.mates.push({ code, name: row.name || null, athleteName: aName, avatar: row.avatar_path || null });
+  saveMates();
+  renderMateBar();
+  startMatesPolling();
+  toast(`👀 Tu suis ${aName || row.name || 'ton pote'} sur la course.`);
+}
+function removeMate(i) {
+  const m = state.mates[i]; if (!m) return;
+  if (!confirm(`Ne plus suivre « ${(m.athleteName || m.name || m.code)} » ?`)) return;
+  state.mates.splice(i, 1); saveMates();
+  delete state._matesLive[m.code];
+  if (!state.mates.length) stopMatesPolling();
+  renderMateBar();
+  renderMates();
+}
+function focusMate(i) {
+  const m = state.mates[i]; if (!m) return;
+  const live = state._matesLive[m.code];
+  if (live && live.lat != null && state.map) { state.map.panTo(live.lat, live.lon); toast(`📍 ${(m.athleteName || m.name || 'Pote')}`); }
+  else toast('Position pas encore reçue pour ce pote.');
+}
+function startMatesPolling() {
+  if (state._matesT || state.mode !== 'athlete' || !state.mates.length) return;
+  pollMates();
+  state._matesT = setInterval(pollMates, 5000);
+}
+function stopMatesPolling() {
+  if (state._matesT) { clearInterval(state._matesT); state._matesT = null; }
+}
+async function pollMates() {
+  if (state.mode !== 'athlete' || !state.mates.length) { stopMatesPolling(); return; }
+  try {
+    await Promise.all(state.mates.map(async (m) => {
+      try { const live = await fetchLive(m.code); if (live) state._matesLive[m.code] = live; } catch (_) { /* ignore */ }
+    }));
+    renderMates();
+    renderMateBar();
+  } catch (_) { /* réseau : prochain tick */ }
+}
+/** Marqueurs colorés des potes sur la carte de l'athlète (en plus de sa propre position). */
+function renderMates() {
+  if (!state.map || state.mode !== 'athlete') return;
+  const now = Date.now();
+  const list = state.mates.map((m, i) => {
+    const live = state._matesLive[m.code];
+    if (live && live.athlete_name) m.athleteName = live.athlete_name;
+    if (!live || live.lat == null) return null;
+    const on = live.active && live.updated_at && (now - new Date(live.updated_at).getTime() < 120000);
+    const nm = (m.athleteName || m.name || m.code).trim();
+    return {
+      code: m.code, lat: live.lat, lon: live.lon,
+      name: escapeHtml(nm), initial: (nm.charAt(0) || '?').toUpperCase(),
+      avatar: m.avatar ? avatarUrl(m.avatar) : null,
+      color: athColor(i), active: on, focused: false,
+    };
+  }).filter(Boolean);
+  state.map.setAthletes(list, (code) => {
+    const i = state.mates.findIndex((m) => m.code === code);
+    if (i >= 0) focusMate(i);
+  });
 }
 function removeFollow(idx) {
   const f = state.follows[idx]; if (!f) return;
