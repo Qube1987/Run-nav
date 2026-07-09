@@ -45,8 +45,9 @@ export async function uploadAvatar(file) {
 export function avatarUrl(path) { return path ? mediaUrl(path) : null; }
 
 // ------------------------------------------------------------ CODE DE SUIVI (follower)
-/** Résout un code de suivi → { name, track } (nom de l'épreuve + trace), ou null.
-    Ne renvoie PAS la config éditable : un follower regarde, il n'importe rien. */
+/** Résout un code de suivi → { name, track, athlete_name, avatar_path, gpx_key,
+    group_id, data }, ou null. `data` (repères : ravitos, barrières, arrivée) est
+    fourni en LECTURE SEULE : le follower l'affiche mais n'importe/ne sauvegarde rien. */
 export async function resolveFollow(followCode) {
   const res = await apiFetch('/rest/v1/rpc/runnav_get_by_follow', {
     method: 'POST',

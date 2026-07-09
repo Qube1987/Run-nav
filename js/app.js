@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2414,7 +2414,9 @@ async function followAthlete(code, pseudo, expand = true) {
   if (typeof t === 'string') { try { t = JSON.parse(t); } catch (_) { t = null; } }
   if (!t || !Array.isArray(t.pts) || t.pts.length < 2) { showWelcomeError('Cet athlète n’a pas de trace partagée.'); return false; }
   state.followPseudo = pseudo; localSet('pseudo', pseudo);
-  state._followTracks[code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: row.name || 'Course' };
+  let cfg = row.data;                               // repères partagés (ravitos, barrières, arrivée)
+  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch (_) { cfg = null; } }
+  state._followTracks[code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: row.name || 'Course', config: cfg || null };
   const aName = (row.athlete_name || '').trim() || null;
   const avatar = row.avatar_path || null;
   const salon = row.group_id || row.gpx_key || null; // salon = groupe (repli sur gpx_key pour l'ancien schéma)
@@ -2451,7 +2453,9 @@ async function openFollowAthlete(idx) {
     let t = row && row.track;
     if (typeof t === 'string') { try { t = JSON.parse(t); } catch (_) { t = null; } }
     if (!t || !Array.isArray(t.pts) || t.pts.length < 2) { toast(`« ${f.name} » indisponible.`); return; }
-    state._followTracks[f.code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: (row && row.name) || f.name };
+    let cfg = row && row.data;                       // config partagée (ravitos, barrières, arrivée)
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch (_) { cfg = null; } }
+    state._followTracks[f.code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: (row && row.name) || f.name, config: cfg || null };
     if (row) {
       if (row.name) f.name = row.name;
       if ((row.athlete_name || '').trim()) f.athleteName = row.athlete_name.trim();
@@ -2469,7 +2473,31 @@ async function openFollowAthlete(idx) {
   state.followCode = f.code;
   localSet('followActive', String(idx));
   startApp(track);
+  applyFollowerWaypoints(cached.config); // ravitos / barrières / arrivée partagés par l'athlète
   enterFollowerMode();
+}
+
+/** Applique à la vue follower les repères partagés par l'athlète (ravitos, barrières,
+    arrivée). Lecture seule : on ne touche PAS au rythme (le follower reste en live). */
+function applyFollowerWaypoints(cfg) {
+  if (!cfg) return;
+  if (cfg.finishMeta) {
+    state.finishMeta = {
+      info: cfg.finishMeta.info || '', cutoff: cfg.finishMeta.cutoff || null,
+      label: cfg.finishMeta.label || '🏁 Arrivée', icons: metaIcons(cfg.finishMeta), color: cfg.finishMeta.color || '',
+    };
+  }
+  if (Array.isArray(cfg.waypoints) && cfg.waypoints.length && state.track) {
+    state.waypoints = cfg.waypoints.map((w) => {
+      const pt = pointAtDistance(state.track.points, w.d);
+      return {
+        d: w.d, lat: pt.lat, lon: pt.lon, ele: pt.ele, label: w.label,
+        info: w.info || '', cutoff: w.cutoff || null, icons: metaIcons(w), color: w.color || '',
+        auto: !!w.auto, summit: !!w.summit, manual: !!w.manual,
+      };
+    });
+  }
+  renderWaypointMarkers();
 }
 
 function enterFollowerMode() {
