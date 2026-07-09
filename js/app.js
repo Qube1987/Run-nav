@@ -72,7 +72,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1617,10 +1617,22 @@ function recomputePacing() {
   }
   state.refSpeedFlat = ref;
   state.cumTime = buildTimeModel(pts, ref);
+  updateClimbTimes(); // durée estimée de chaque côte (pour l'étiquette du profil)
 
   renderPaceTable();
   if (state.lastFix && state.lastFix.onRoute) { updateStatbar(state.lastFix.d, state.lastFix.off); }
   else { $('st-eta').textContent = etaText(); }
+}
+
+/** Durée estimée de chaque côte (temps de passage sommet − pied), pour l'étiquette du profil. */
+function updateClimbTimes() {
+  if (!state.climbs || !state.cumTime || !state.track) return;
+  const pts = state.track.points, cum = state.cumTime;
+  for (const c of state.climbs) {
+    const dur = Math.max(0, timeAtDistance(pts, cum, c.endD) - timeAtDistance(pts, cum, c.startD));
+    c.durLabel = fmtDuration(dur);
+  }
+  if (state.profile) state.profile.render();
 }
 
 function renderPaceTable() {

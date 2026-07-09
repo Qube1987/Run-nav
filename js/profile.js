@@ -216,13 +216,21 @@ export class ProfileChart {
       const cx1 = Math.min(w - p.r, x(c.endD));
       ctx.fillStyle = 'rgba(210,59,59,0.10)';
       ctx.fillRect(cx0, p.t, cx1 - cx0, s.plotH);
-      // étiquette pente moyenne au sommet
-      if (cx1 - cx0 > 34 * this.dpr) {
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.font = `700 ${10.5 * this.dpr}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const label = `${c.avgGrade.toFixed(1)}%${c.category ? ' · ' + (c.category === 'HC' ? 'HC' : 'Cat.' + c.category) : ''}`;
+      // étiquette : longueur · pente · catégorie · durée estimée (au sommet)
+      ctx.font = `700 ${10.5 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const km = ((c.endD - c.startD) / 1000).toFixed(1);
+      const cat = c.category ? ' · ' + (c.category === 'HC' ? 'HC' : 'Cat.' + c.category) : '';
+      const dur = c.durLabel ? ' · ⏱ ' + c.durLabel : '';
+      const full = `${km} km · ${c.avgGrade.toFixed(1)}%${cat}${dur}`;
+      // sur une côte étroite, on retombe sur une version courte, puis rien
+      const short = `${km} km · ${c.avgGrade.toFixed(1)}%`;
+      const room = cx1 - cx0 - 4 * this.dpr;
+      const label = ctx.measureText(full).width <= room ? full
+        : (ctx.measureText(short).width <= room ? short : null);
+      if (label) {
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.fillText(label, (cx0 + cx1) / 2, p.t + 2 * this.dpr);
       }
     }
