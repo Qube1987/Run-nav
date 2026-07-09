@@ -247,6 +247,7 @@ body { overflow: hidden; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); backdrop-filter: blur(2px);
 }
 .terrain-legend .tl-title { font-weight: 800; font-size: 12.5px; margin-bottom: 4px; }
+.terrain-legend .tl-sub { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.14); }
 .terrain-legend .tl-row { display: flex; align-items: center; gap: 7px; line-height: 1.5; white-space: nowrap; }
 .terrain-legend .tl-sw { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid rgba(255,255,255,0.35); }
 .map { width: 100%; height: 100%; }

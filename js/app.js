@@ -43,6 +43,29 @@ const TERRAIN = {
 };
 const TERRAIN_COLORS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.c]));
 
+// Courabilité des descentes = nature du sol × déclivité.
+// Score 0..1 : 1 = on court à fond, 0 = on marche. Note pondérée par la longueur
+// du segment, puis rangée dans un des paliers RUN_LEVELS pour l'affichage.
+const TERRAIN_RUN = {
+  route: 1.0, compacte: 0.92, sentier: 0.78, terre: 0.72,
+  gravier: 0.55, rocaille: 0.34, technique: 0.2, inconnu: 0.66,
+};
+function gradeRunFactor(g) {
+  const s = Math.abs(g);              // % de pente en descente
+  if (s <= 8) return 1;               // douce : ne freine pas
+  if (s <= 15) return 0.68;           // soutenue
+  if (s <= 25) return 0.42;           // raide
+  return 0.22;                        // cassante
+}
+const RUN_LEVELS = [
+  { min: 0.72, key: 'coulante',  label: 'Coulante',  color: '#3fbf6f' },
+  { min: 0.55, key: 'courable',  label: 'Courable',  color: '#8ecb3c' },
+  { min: 0.40, key: 'technique', label: 'Technique', color: '#e8c23a' },
+  { min: 0.25, key: 'cassante',  label: 'Cassante',  color: '#ef8a2b' },
+  { min: 0,    key: 'marche',    label: 'Marche',    color: '#e0392c' },
+];
+function runLevel(score) { return RUN_LEVELS.find((l) => score >= l.min) || RUN_LEVELS[RUN_LEVELS.length - 1]; }
+
 // Cadence réseau (ms) — une SEULE boucle par mode réveille la radio à intervalle fixe
 // (diffusion + sondages regroupés au même tick = un seul réveil radio par cycle).
 // - Premier plan normal : NET_FG_MS (diffusion + sondages).
@@ -72,7 +95,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1807,6 +1830,54 @@ async function loadTerrain() {
   state.terrain = data;
   $('pf-terrain').hidden = false;         // le bouton n'apparaît que si des données existent
   if (state.profile) state.profile.setTerrain(data, TERRAIN_COLORS);
+  computeDescents();                       // indice de courabilité (dépend du terrain)
+}
+
+// Nature du sol à une distance donnée (m) → code terrain (ou 'inconnu').
+function terrainCodeAt(d) {
+  if (!state.terrain || !state.terrain.segs) return 'inconnu';
+  for (const s of state.terrain.segs) if (d >= s[0] && d <= s[1]) return s[2];
+  return 'inconnu';
+}
+
+// Détecte les descentes franches (pente < -3 % sur ≥ 250 m) et calcule pour
+// chacune un indice de courabilité (nature du sol × déclivité), pondéré par la
+// longueur. Résultat rangé dans state.descents et poussé au profil.
+function computeDescents() {
+  state.descents = [];
+  if (!state.track || !state.terrain) { if (state.profile) state.profile.setDescents([]); return; }
+  const pts = state.track.points;
+  const MIN_LEN = 250, ENTER = -3, EXIT = -1;
+  let i = 0;
+  while (i < pts.length - 1) {
+    if ((pts[i].grade || 0) > ENTER) { i++; continue; }
+    // début d'une descente : on avance tant que ça descend (grade <= EXIT, -1 %)
+    const startD = pts[i].d;
+    let j = i + 1;
+    while (j < pts.length && (pts[j].grade || 0) <= EXIT) j++;
+    const endD = pts[Math.min(j, pts.length - 1)].d;
+    if (endD - startD >= MIN_LEN) {
+      // moyenne pondérée par la longueur de chaque petit segment
+      let sum = 0, len = 0, drop = 0;
+      for (let k = i; k < Math.min(j, pts.length - 1); k++) {
+        const a = pts[k], b = pts[k + 1];
+        const dl = b.d - a.d; if (dl <= 0) continue;
+        const g = (a.grade + b.grade) / 2;
+        const code = terrainCodeAt((a.d + b.d) / 2);
+        const sc = (TERRAIN_RUN[code] ?? 0.66) * gradeRunFactor(g);
+        sum += sc * dl; len += dl;
+        drop += Math.max(0, a.ele - b.ele);
+      }
+      if (len > 0) {
+        const score = sum / len;
+        const lvl = runLevel(score);
+        const avgGrade = -(drop / len) * 100;
+        state.descents.push({ startD, endD, score, avgGrade, key: lvl.key, label: lvl.label, color: lvl.color });
+      }
+    }
+    i = Math.max(j, i + 1);
+  }
+  if (state.profile) state.profile.setDescents(state.descents);
 }
 function toggleTerrain() {
   if (!state.terrain) return;
@@ -1823,10 +1894,18 @@ function renderTerrainLegend() {
   const km = {};
   for (const s of state.terrain.segs) km[s[2]] = (km[s[2]] || 0) + (s[1] - s[0]);
   const codes = Object.keys(km).sort((a, b) => km[b] - km[a]);
-  el.innerHTML = '<div class="tl-title">🪨 Nature du sol</div>' + codes.map((c) => {
+  let html = '<div class="tl-title">🪨 Nature du sol</div>' + codes.map((c) => {
     const t = TERRAIN[c] || { c: '#888', label: c };
     return `<div class="tl-row"><span class="tl-sw" style="background:${t.c}"></span>${t.label} · ${(km[c] / 1000).toFixed(1)} km</div>`;
   }).join('');
+  // échelle de courabilité des descentes (uniquement les paliers présents)
+  if (state.descents && state.descents.length) {
+    const used = new Set(state.descents.map((d) => d.key));
+    const rows = RUN_LEVELS.filter((l) => used.has(l.key)).map((l) =>
+      `<div class="tl-row"><span class="tl-sw" style="background:${l.color}"></span>${l.label}</div>`).join('');
+    html += '<div class="tl-title tl-sub">🏃 Descentes</div>' + rows;
+  }
+  el.innerHTML = html;
   el.hidden = false;
 }
 

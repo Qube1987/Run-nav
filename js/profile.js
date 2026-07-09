@@ -28,6 +28,7 @@ export class ProfileChart {
     this.terrain = null;      // nature du sol : { segs:[[a,b,code]] }
     this.terrainColors = null;// map code → couleur
     this.terrainOn = false;   // calque terrain affiché ?
+    this.descents = [];       // descentes notées : [{startD,endD,label,color}]
     this.cursorD = null;      // distance de la position courante (m)
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
     this.minSpan = 120;       // largeur minimale visible (m)
@@ -64,6 +65,7 @@ export class ProfileChart {
   setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
   setTerrain(data, colors) { this.terrain = data; this.terrainColors = colors; this.render(); }
   setTerrainOn(on) { this.terrainOn = !!on; this.render(); }
+  setDescents(list) { this.descents = Array.isArray(list) ? list : []; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
     if (view === 'climb' && range) this.win = [range[0], range[1]];
@@ -207,6 +209,31 @@ export class ProfileChart {
       ctx.strokeStyle = 'rgba(0,0,0,0.5)';
       ctx.lineWidth = 1 * this.dpr;
       ctx.strokeRect(p.l, yTop, s.plotW, band);
+
+      // --- courabilité des descentes : bandeau juste au-dessus + étiquette ---
+      if (this.descents && this.descents.length) {
+        const rBand = 7 * this.dpr;
+        const rTop = yTop - rBand - 2 * this.dpr;
+        for (const dn of this.descents) {
+          if (dn.endD < d0 || dn.startD > d1) continue;
+          const xa = Math.max(p.l, x(dn.startD)), xb = Math.min(w - p.r, x(dn.endD));
+          if (xb <= xa) continue;
+          ctx.fillStyle = dn.color;
+          ctx.fillRect(xa, rTop, xb - xa, rBand);
+          // étiquette « ↓ L km · <niveau> » si la place le permet
+          ctx.font = `700 ${9.5 * this.dpr}px system-ui, sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          const kmD = ((dn.endD - dn.startD) / 1000).toFixed(1);
+          const full = `↓ ${kmD} km · ${dn.label}`;
+          const room = xb - xa - 4 * this.dpr;
+          const txt = ctx.measureText(full).width <= room ? full
+            : (ctx.measureText(dn.label).width <= room ? dn.label : null);
+          if (txt) {
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillText(txt, (xa + xb) / 2, rTop - 1 * this.dpr);
+          }
+        }
+      }
     }
 
     // --- zones de côtes (surlignage + étiquette) ---
