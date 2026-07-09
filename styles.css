@@ -744,6 +744,31 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
   font-size: 11px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* --- fenêtre de partage d'un code (lisible autour d'une table) --- */
+.code-modal { position: fixed; inset: 0; z-index: 2600; display: flex; align-items: center; justify-content: center; }
+.cm-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); }
+.cm-card {
+  position: relative; z-index: 1; width: min(88vw, 360px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+  padding: 22px 20px 20px; text-align: center; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+.cm-close {
+  position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--panel-2); border: none; color: var(--muted); font-size: 15px; cursor: pointer;
+}
+.cm-title { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.cm-code {
+  font-size: 44px; font-weight: 800; letter-spacing: 0.14em; color: var(--text);
+  font-variant-numeric: tabular-nums; word-break: break-all; line-height: 1.1; margin-bottom: 12px;
+}
+.cm-sub { margin: 0 0 16px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.cm-copy {
+  display: block; width: 100%; margin: 0 0 8px; padding: 9px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text); font-size: 14px; cursor: pointer;
+}
+.cm-copy:active { opacity: 0.7; }
+.cm-card .wide-btn { margin: 0; }
+
 /* --- salon de l'épreuve (chat de groupe) --- */
 .salon-parts { margin-bottom: 12px; }
 .salon-parts > summary {

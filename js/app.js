@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -272,6 +272,10 @@ function init() {
   $('cloud-save').addEventListener('click', cloudSaveNow);
   $('cloud-restore').addEventListener('click', cloudRestoreNow);
   $('cloud-invite').addEventListener('click', shareRaceInvite);
+  // Fenêtre de partage d'un code (affichage visible + envoi du message pré-rempli)
+  document.querySelectorAll('[data-cmclose]').forEach((el) => el.addEventListener('click', () => { $('code-modal').hidden = true; }));
+  $('code-modal-share').addEventListener('click', doCodeShare);
+  $('code-modal-copy').addEventListener('click', copyCode);
 
   // édition noms / infos / barrières dans la table (délégation)
   $('pace-table').addEventListener('change', (e) => {
@@ -1074,10 +1078,7 @@ async function shareRaceInvite() {
   if (!code) { toast('Sauvegarde d’abord l’épreuve dans le cloud.'); return; }
   const url = `${location.origin}${location.pathname}?import=${code}`;
   const text = `Rejoins mon épreuve « ${state.track.name} » sur Run-Nav : ${url}\nCode de l'épreuve : ${code}`;
-  try {
-    if (navigator.share) await navigator.share({ title: 'Run-Nav — rejoins l’épreuve', text });
-    else { await navigator.clipboard.writeText(text); toast(`Invitation copiée · code ${code}`); }
-  } catch (_) { /* partage annulé */ }
+  openCodeModal({ title: "Code de l'épreuve", code, sub: 'Les autres coureurs importent ce code pour te rejoindre, ou envoie le message ✉️', shareText: text });
 }
 
 /** Ouvre un parcours depuis un code. asCopy=true → import d'une épreuve partagée
@@ -1919,11 +1920,29 @@ async function shareLive() {
   const url = `${location.origin}${location.pathname}?follow=${code}`;
   const intro = state.mode === 'follower' ? 'Suis cet athlète en live' : 'Suis ma course en live';
   const text = `${intro} : ${url}\nCode de suivi : ${code}`;
+  openCodeModal({ title: 'Code de suivi', code, sub: 'Donne ce code à tes supporters, ou envoie le message avec le lien ✉️', shareText: text });
+}
+
+// ------------------------------------------------------------------ FENÊTRE DE PARTAGE D'UN CODE
+let _codeShareText = '';
+function openCodeModal({ title, code, sub, shareText }) {
+  $('code-modal-title').textContent = title || 'Code';
+  $('code-modal-code').textContent = code || '—';
+  $('code-modal-sub').textContent = sub || '';
+  _codeShareText = shareText || '';
+  $('code-modal').hidden = false;
+}
+async function doCodeShare() {
+  if (!_codeShareText) return;
   try {
-    // On ne passe PAS `url` séparément : sinon Android le rajoute → URL en double.
-    if (navigator.share) await navigator.share({ title: 'Run-Nav — suivi live', text });
-    else { await navigator.clipboard.writeText(text); toast(`Message copié · code ${code}`); }
+    if (navigator.share) await navigator.share({ title: 'Run-Nav', text: _codeShareText });
+    else { await navigator.clipboard.writeText(_codeShareText); toast('Message copié.'); }
   } catch (_) { /* partage annulé */ }
+}
+async function copyCode() {
+  const code = $('code-modal-code').textContent || '';
+  try { await navigator.clipboard.writeText(code); toast(`Code ${code} copié.`); }
+  catch (_) { toast('Copie impossible.'); }
 }
 
 // ------------------------------------------------------- ATHLÈTE : médias

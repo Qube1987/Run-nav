@@ -429,6 +429,19 @@
     <button id="undo-btn" type="button">↩︎ Annuler</button>
   </div>
 
+  <!-- Fenêtre de partage d'un code (lisible autour d'une table) -->
+  <div id="code-modal" class="code-modal" hidden>
+    <div class="cm-bg" data-cmclose></div>
+    <div class="cm-card">
+      <button class="cm-close" data-cmclose type="button">✕</button>
+      <h3 id="code-modal-title" class="cm-title">Code</h3>
+      <div id="code-modal-code" class="cm-code">——————</div>
+      <p id="code-modal-sub" class="cm-sub"></p>
+      <button id="code-modal-copy" class="cm-copy" type="button">📋 Copier le code</button>
+      <button id="code-modal-share" class="wide-btn" type="button">✉️ Partager le message</button>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
 
