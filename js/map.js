@@ -124,21 +124,14 @@ export class RaceMap {
     const list = (icons && icons.length ? icons : (wpt.icon ? [wpt.icon] : [])).slice(0, 8);
     const color = wpt.color || (isBar ? '#e0484a' : '#ff5a3c');
     const badge = isBar ? '<span class="wpt-bar">⏱</span>' : '';
-    let html, size, anchor;
-    if (list.length <= 1) {
-      const ico = list[0] || (wpt.summit ? '⛰️' : (isBar ? '⏱️' : '📍'));
-      html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}</div>`;
-      size = [28, 28]; anchor = [14, 28];
-    } else {
-      // plusieurs dispos → icônes EN COLONNE (l'une au-dessus de l'autre),
-      // chacune distincte, sans chevauchement. Le repère grandit vers le haut.
-      const inner = list.map((i) => `<span>${i}</span>`).join('');
-      const w = 26, h = list.length * 18 + 6;
-      html = `<div class="wpt-col${isBar ? ' has-bar' : ''}" style="background:${color}">${inner}${badge}</div>`;
-      size = [w, h]; anchor = [w / 2, h];
-    }
+    // Carte : UNE seule icône par repère pour ne pas surcharger. Les autres icônes
+    // (dispos, notes, barrière…) s'affichent au clic dans la fiche. Le profil, lui,
+    // conserve toutes les icônes. Un petit « +N » signale qu'il y a plus à voir.
+    const ico = list[0] || (wpt.summit ? '⛰️' : (isBar ? '⏱️' : '📍'));
+    const more = list.length > 1 ? `<span class="wpt-more">+${list.length - 1}</span>` : '';
+    const html = `<div class="wpt-pin${isBar ? ' has-bar' : ''}" style="background:${color}"><span>${ico}</span>${badge}${more}</div>`;
     const m = L.marker([wpt.lat, wpt.lon], {
-      icon: L.divIcon({ className: 'wpt-icon', html, iconSize: size, iconAnchor: anchor }),
+      icon: L.divIcon({ className: 'wpt-icon', html, iconSize: [28, 28], iconAnchor: [14, 28] }),
     }).addTo(this.wptLayer);
     const tip = isBar
       ? `${wpt.label || 'Point'}<br>⏱ Barrière ${barrierText}`

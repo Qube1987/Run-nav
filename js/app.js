@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -657,13 +657,8 @@ function barrierText(cutoff) {
 }
 
 function renderWaypointMarkers() {
-  // Mode suivi (follower) : on n'affiche PAS les repères — juste position + photos.
-  if (state.mode === 'follower') {
-    if (state.map) state.map.clearWaypoints();
-    state.profile.setWaypoints([]);
-    state.profile.setFinishBarrier(false);
-    return;
-  }
+  // Repères affichés dans les deux modes (athlète ET suivi). Sur la carte, une
+  // seule icône par repère (détails au clic) ; sur le profil, toutes les icônes.
   if (state.map) {
     state.map.clearWaypoints();
     for (const w of state.waypoints) {
