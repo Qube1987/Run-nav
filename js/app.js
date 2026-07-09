@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v74';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2147,19 +2147,23 @@ async function onMediaPicked(e) {
     try { const media = await fetchMedia(code); state._media = media; refreshMediaMarkers(media); updateFeedBadge(); noteSalonMedia(media); if (salonOpen()) renderSalon(state._salon || []); } catch (_) { /* ignore */ }
   } catch (err) { toast('Échec : ' + (err.message || 'envoi impossible')); }
 }
-/** Position à géotaguer pour un média : l'athlète → sa position ; le follower → la sienne
-    (si géoloc activée), sinon la dernière position de l'athlète suivi, sinon un point du parcours. */
+/** Position à géotaguer pour un média.
+    - Follower : géolocalisé (carte + profil) UNIQUEMENT s'il a sa position GPS active/autorisée
+      ET qu'il se trouve sur la trace (à MARGIN près). Sinon lat/lon/d = null → salon seul.
+    - Athlète : sa position est projetée sur la trace, on géolocalise toujours. */
 function mediaPosition() {
-  let lat = null, lon = null, d = null;
+  const MARGIN = 60; // m : tolérance pour considérer un follower « sur la trace »
   if (state.mode === 'follower') {
-    if (state.followerPos) {
-      lat = state.followerPos.lat; lon = state.followerPos.lon;
-      try { d = projectOnTrack(state.followerPos, state.track.points, 0).along; } catch (_) { /* ignore */ }
-    } else {
-      const live = state._followLive[state.followCode];
-      if (live && live.lat != null) { lat = live.lat; lon = live.lon; d = live.d != null ? live.d : null; }
+    if (state.followerPos && state.track) {
+      try {
+        const proj = projectOnTrack(state.followerPos, state.track.points, 0);
+        if (proj.dist <= MARGIN) return { lat: state.followerPos.lat, lon: state.followerPos.lon, d: proj.along };
+      } catch (_) { /* ignore */ }
     }
-  } else if (state.lastFix && state.lastFix.lat != null) {
+    return { lat: null, lon: null, d: null }; // hors trace ou sans GPS → salon uniquement
+  }
+  let lat = null, lon = null, d = null;
+  if (state.lastFix && state.lastFix.lat != null) {
     lat = state.lastFix.lat; lon = state.lastFix.lon; d = state.lastFix.d;
   }
   if (d == null) d = state.scrubD || 0;
