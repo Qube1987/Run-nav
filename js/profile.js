@@ -216,7 +216,7 @@ export class ProfileChart {
       // « Sentier · Sentier · … » et gagner de la place.
       ctx.font = `700 ${9 * this.dpr}px system-ui, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const yMid = yTop + band / 2;
+      const yMid = yTop + band / 2 + 0.5 * this.dpr; // léger recentrage optique
       const segs = this.terrain.segs;
       let r = 0;
       while (r < segs.length) {
@@ -233,11 +233,8 @@ export class ProfileChart {
         const txt = ctx.measureText(label).width <= room ? label
           : (ctx.measureText(shrt).width <= room ? shrt : null);
         if (!txt) continue;
-        // contour sombre + remplissage blanc : lisible sur fonds clairs (gravier) et foncés
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5 * this.dpr;
-        ctx.strokeText(txt, (xa + xb) / 2, yMid);
-        ctx.fillStyle = 'rgba(255,255,255,0.96)';
+        // texte blanc simple, homogène avec les étiquettes de descente
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
         ctx.fillText(txt, (xa + xb) / 2, yMid);
       }
 
