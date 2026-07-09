@@ -31,8 +31,9 @@ export function localSet(k, v) { try { localStorage.setItem(LS(k), v); } catch (
 
 /** Sauvegarde complète (config + trace GPX) — upsert par code.
     Si connecté, user_id est rempli automatiquement côté serveur (défaut auth.uid()). */
-export async function cloudSaveFull(code, gpxKey, name, data, track, isoNow) {
+export async function cloudSaveFull(code, gpxKey, name, data, track, isoNow, groupId) {
   const body = { code, gpx_key: gpxKey, name: name || null, data, track, updated_at: isoNow };
+  if (groupId) body.group_id = groupId;
   const res = await apiFetch(`/rest/v1/${TABLE}`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },

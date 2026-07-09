@@ -304,20 +304,23 @@
         </button>
         <p class="hint" id="recale-hint">Depuis ta position GPS et l'heure actuelle, l'appli déduit ton allure réelle et met à jour tous les temps de passage.</p>
 
-        <h3 class="sub">Sauvegarde</h3>
-        <p class="hint">Tes réglages sont gardés sur cet appareil automatiquement. Pour les retrouver ailleurs (ou après un vidage complet), sauvegarde-les dans le cloud : tu obtiens un code à ressaisir.</p>
+        <h3 class="sub">Sauvegarde &amp; partage entre coureurs</h3>
+        <p class="hint">Tes réglages sont gardés sur cet appareil automatiquement. Sauvegarde-les dans le cloud pour les retrouver ailleurs, <b>et pour inviter d'autres coureurs sur ton épreuve</b> : ils importent ce code, rejoignent le <b>salon commun</b>, mais gardent leur propre parcours (chacun ajuste ses waypoints/notes de son côté).</p>
         <div class="cloud-box">
           <div class="cloud-code-line">
-            <span>Code de sauvegarde :</span>
+            <span>Code de l'épreuve :</span>
             <strong id="cloud-code">—</strong>
           </div>
           <div class="field-row">
             <button id="cloud-save" class="wide-btn" type="button">☁️ Sauvegarder dans le cloud</button>
           </div>
+          <div class="field-row">
+            <button id="cloud-invite" class="ghost-btn" type="button">📤 Inviter d'autres coureurs (partager le code)</button>
+          </div>
           <div class="input-with-btn">
             <input id="cloud-restore-code" type="text" inputmode="text" autocapitalize="characters"
-                   maxlength="6" placeholder="Ressaisir un code…" />
-            <button id="cloud-restore" type="button" title="Restaurer">⬇︎</button>
+                   maxlength="6" placeholder="Importer une épreuve (code)…" />
+            <button id="cloud-restore" type="button" title="Importer">⬇︎</button>
           </div>
         </div>
 

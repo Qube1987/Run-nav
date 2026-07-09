@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -131,6 +131,7 @@ const state = {
   // persistance
   gpxKey: null,
   cloudCode: null,
+  groupId: null,        // identifiant du salon de groupe (propagé par le code de partage, pas par le hash GPX)
   finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée', icons: [], color: '' },
   _saveT: null,
 };
@@ -270,6 +271,7 @@ function init() {
   // sauvegarde cloud
   $('cloud-save').addEventListener('click', cloudSaveNow);
   $('cloud-restore').addEventListener('click', cloudRestoreNow);
+  $('cloud-invite').addEventListener('click', shareRaceInvite);
 
   // édition noms / infos / barrières dans la table (délégation)
   $('pace-table').addEventListener('change', (e) => {
@@ -323,11 +325,20 @@ function init() {
   const ver = $('app-version'); if (ver) ver.textContent = APP_VERSION;
 
   // Lien profond : run-nav…?follow=CODE → pré-remplit le suivi d'un athlète
-  const followParam = new URLSearchParams(location.search).get('follow');
+  const params = new URLSearchParams(location.search);
+  const followParam = params.get('follow');
   if (followParam) {
     $('follow-box').hidden = false;
     $('follow-code').value = followParam.toUpperCase();
     setTimeout(() => $('follow-name').focus(), 100);
+  }
+  // Lien profond : …?import=CODE → pré-remplit l'import de l'épreuve (rejoindre le salon commun)
+  const importParam = params.get('import');
+  if (importParam) {
+    const wrap = document.querySelector('.welcome-restore-wrap');
+    if (wrap) wrap.open = true;
+    $('welcome-code').value = importParam.toUpperCase();
+    setTimeout(() => { try { $('welcome-code').scrollIntoView({ block: 'center' }); } catch (_) { /* ignore */ } }, 100);
   }
 
   setupPWA();
@@ -493,6 +504,9 @@ function startApp(track) {
   setActivityType(state.activity);
   state.cloudCode = localGet('code:' + state.gpxKey);
   state.myFollowCode = localGet('follow:' + state.gpxKey);
+  // salon de groupe : local si connu, sinon repli sur gpx_key pour une épreuve déjà en cloud
+  // (cohérent avec le backfill), null pour une épreuve neuve pas encore partagée.
+  state.groupId = localGet('group:' + state.gpxKey) || (state.cloudCode ? state.gpxKey : null);
   state._cloudInit = false; // autorise l'auto-création de la sauvegarde cloud pour cette épreuve
 
   $('welcome').hidden = true;
@@ -1018,7 +1032,8 @@ function autosave() {
     } else if (isLoggedIn() && !state._cloudInit) {
       state._cloudInit = true; // évite de créer plusieurs codes en parallèle
       const code = makeCode();
-      cloudSaveFull(code, state.gpxKey, state.track.name, cfg, serializeTrack(), new Date().toISOString())
+      ensureGroupId();
+      cloudSaveFull(code, state.gpxKey, state.track.name, cfg, serializeTrack(), new Date().toISOString(), state.groupId)
         .then(() => {
           state.cloudCode = code;
           localSet('code:' + state.gpxKey, code);
@@ -1036,11 +1051,12 @@ async function cloudSaveNow() {
     localSet('code:' + state.gpxKey, state.cloudCode);
     $('cloud-code').textContent = state.cloudCode;
   }
+  ensureGroupId();
   const btn = $('cloud-save');
   btn.disabled = true; btn.textContent = '☁️ Sauvegarde…';
   try {
     await cloudSaveFull(state.cloudCode, state.gpxKey, state.track.name,
-      buildConfig(), serializeTrack(), new Date().toISOString());
+      buildConfig(), serializeTrack(), new Date().toISOString(), state.groupId);
     toast(`Sauvegardé dans le cloud · code ${state.cloudCode}`);
     if (isLoggedIn()) loadRaces(); // rafraîchit « Mes épreuves »
   } catch (e) {
@@ -1048,6 +1064,20 @@ async function cloudSaveNow() {
   } finally {
     btn.disabled = false; btn.textContent = '☁️ Sauvegarder dans le cloud';
   }
+}
+
+/** Partage le code de l'épreuve pour inviter d'autres coureurs (même salon, parcours perso). */
+async function shareRaceInvite() {
+  if (!state.track) return;
+  let code = state.cloudCode;
+  if (!code) { await cloudSaveNow(); code = state.cloudCode; }
+  if (!code) { toast('Sauvegarde d’abord l’épreuve dans le cloud.'); return; }
+  const url = `${location.origin}${location.pathname}?import=${code}`;
+  const text = `Rejoins mon épreuve « ${state.track.name} » sur Run-Nav : ${url}\nCode de l'épreuve : ${code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Run-Nav — rejoins l’épreuve', text });
+    else { await navigator.clipboard.writeText(text); toast(`Invitation copiée · code ${code}`); }
+  } catch (_) { /* partage annulé */ }
 }
 
 /** Ouvre un parcours depuis un code. asCopy=true → import d'une épreuve partagée
@@ -1076,15 +1106,17 @@ async function restoreFromCode(code, asCopy = false) {
     startApp(track);              // construit carte + profil (applique aussi le local éventuel)
     applyConfig(row.data);        // puis on impose la config du cloud
     if (asCopy) {
-      // Import : l'épreuve devient une copie perso. On n'adopte PAS le code du
-      // propriétaire (state.cloudCode reste celui déjà éventuellement à soi, ou nul).
+      // Import : l'épreuve devient une copie perso ÉDITABLE (on n'adopte PAS le code du
+      // propriétaire), mais on HÉRITE de son groupe → même salon que celui qui t'a invité.
       state.myFollowCode = localGet('follow:' + state.gpxKey) || null;
+      if (row.group_id) { state.groupId = row.group_id; localSet('group:' + state.gpxKey, row.group_id); }
       localSave(state.gpxKey, buildConfig());
       afterConfigRestored();
-      toast(`« ${track.name} » importé. Règle-le et partage ton propre code de suivi.`);
+      toast(`« ${track.name} » importé. Tu es dans le salon commun ; personnalise ton parcours librement.`);
     } else {
       state.cloudCode = code;
       localSet('code:' + state.gpxKey, code);
+      if (row.group_id) { state.groupId = row.group_id; localSet('group:' + state.gpxKey, row.group_id); }
       localSave(state.gpxKey, buildConfig());
       afterConfigRestored();
       toast(`« ${track.name} » restauré depuis le cloud.`);
@@ -1111,6 +1143,7 @@ async function cloudRestoreNow() {
     applyConfig(row.data);
     state.cloudCode = code;
     localSet('code:' + state.gpxKey, code);
+    if (row.group_id) { state.groupId = row.group_id; localSet('group:' + state.gpxKey, row.group_id); }
     localSave(state.gpxKey, buildConfig());
     afterConfigRestored();
     toast('Réglages restaurés depuis le cloud.');
@@ -1774,11 +1807,23 @@ function fmtAgo(iso) {
 }
 
 // ------------------------------------------------------- ATHLÈTE : diffusion + partage
+/** Détermine l'identifiant du GROUPE (salon) de cette épreuve : hérité (import) ou nouveau. */
+function ensureGroupId() {
+  if (state.groupId) { localSet('group:' + state.gpxKey, state.groupId); return state.groupId; }
+  // épreuve déjà en cloud (créée avant les groupes) → group_id = gpx_key (cohérent backfill) ;
+  // épreuve neuve → nouveau code de groupe aléatoire.
+  const g = localGet('group:' + state.gpxKey) || (state.cloudCode ? state.gpxKey : makeCode());
+  state.groupId = g;
+  localSet('group:' + state.gpxKey, g);
+  return g;
+}
 /** Crée la sauvegarde cloud (code rattaché au compte) si elle n'existe pas encore. */
 async function ensureCloudCode() {
   if (state.cloudCode) return state.cloudCode;
   const code = makeCode();
-  await cloudSaveFull(code, state.gpxKey, state.track.name, buildConfig(), serializeTrack(), new Date().toISOString());
+  // groupe/salon : hérité si on a importé l'épreuve d'un autre athlète, sinon nouveau groupe
+  ensureGroupId();
+  await cloudSaveFull(code, state.gpxKey, state.track.name, buildConfig(), serializeTrack(), new Date().toISOString(), state.groupId);
   state.cloudCode = code;
   localSet('code:' + state.gpxKey, code);
   const el = $('cloud-code'); if (el) el.textContent = code;
@@ -1968,7 +2013,8 @@ function salonCode() {
     const f = state.follows.find((x) => x.code === state.followCode);
     return (f && f.salon) || null;
   }
-  return state.gpxKey || null;
+  // athlète : salon = groupe de l'épreuve (créé/hérité à la sauvegarde cloud)
+  return state.groupId || null;
 }
 function myChatName() { return state.mode === 'athlete' ? myDisplayName() : (state.followPseudo || 'Supporter'); }
 function salonOpen() { const s = $('inbox-sheet'); return s && !s.hidden; }
@@ -2171,7 +2217,7 @@ async function followAthlete(code, pseudo) {
   state._followTracks[code] = { rawPoints: t.pts.map((a) => ({ lat: a[0], lon: a[1], ele: a[2] })), name: row.name || 'Course' };
   const aName = (row.athlete_name || '').trim() || null;
   const avatar = row.avatar_path || null;
-  const salon = row.gpx_key || null; // identifiant du salon de l'épreuve
+  const salon = row.group_id || row.gpx_key || null; // salon = groupe (repli sur gpx_key pour l'ancien schéma)
   let idx = state.follows.findIndex((f) => f.code === code);
   if (idx < 0) { state.follows.push({ code, name: row.name || 'Course', athleteName: aName, avatar, salon }); idx = state.follows.length - 1; saveFollows(); }
   else { state.follows[idx].name = row.name || state.follows[idx].name; state.follows[idx].athleteName = aName || state.follows[idx].athleteName; state.follows[idx].avatar = avatar || state.follows[idx].avatar; state.follows[idx].salon = salon || state.follows[idx].salon; saveFollows(); }
@@ -2192,7 +2238,7 @@ async function openFollowAthlete(idx) {
       if (row.name) f.name = row.name;
       if ((row.athlete_name || '').trim()) f.athleteName = row.athlete_name.trim();
       if (row.avatar_path) f.avatar = row.avatar_path;
-      if (row.gpx_key) f.salon = row.gpx_key;
+      if (row.group_id || row.gpx_key) f.salon = row.group_id || row.gpx_key;
       saveFollows();
     }
   }
