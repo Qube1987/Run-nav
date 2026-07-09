@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -205,6 +205,10 @@ function init() {
   // (arrière-plan : on continue de POUSSER notre position, on met en pause les sondages entrants).
   document.addEventListener('visibilitychange', onVisibilityChange);
   $('live-eco').addEventListener('click', toggleEco);
+
+  // Bouton « retour » du téléphone : ferme d'abord une feuille ouverte, sinon revient à
+  // l'écran d'accueil (au lieu de fermer complètement l'appli).
+  window.addEventListener('popstate', onBackButton);
 
   // Compte : inscription / connexion / mes épreuves
   $('auth-login').addEventListener('click', () => doAuth('login'));
@@ -515,6 +519,7 @@ function startApp(track) {
 
   $('welcome').hidden = true;
   $('app').hidden = false;
+  pushAppHistory(); // bouton retour du tél → revient à l'accueil au lieu de fermer l'appli
 
   // Carte : isolée dans un try/catch pour que le profil fonctionne même si
   // la librairie carto n'est pas disponible (réseau coupé, etc.).
@@ -1728,6 +1733,38 @@ function toast(msg) {
   toastTimer = setTimeout(() => { el.classList.remove('show'); setTimeout(() => (el.hidden = true), 300); }, 2600);
 }
 
+// ------------------------------------------------------------------ BOUTON RETOUR (PWA)
+/** Empile une entrée d'historique en entrant dans l'appli, pour piéger le bouton retour. */
+function pushAppHistory() {
+  if (state._navPushed) return;
+  try { history.pushState({ rn: 'app' }, ''); state._navPushed = true; } catch (_) { /* ignore */ }
+}
+/** Ferme toute feuille / fenêtre ouverte. Renvoie true si quelque chose a été fermé. */
+function closeOpenOverlays() {
+  const ids = ['code-modal', 'media-view', 'wpt-info', 'media-sheet', 'inbox-sheet', 'profile-sheet', 'pace-sheet'];
+  let closed = false;
+  for (const id of ids) { const el = $(id); if (el && !el.hidden) { el.hidden = true; closed = true; } }
+  const mv = $('mv-body'); if (mv) mv.innerHTML = ''; // stoppe une vidéo en lecture
+  return closed;
+}
+/** Revient à l'écran d'accueil depuis l'appli (au lieu de fermer l'appli). */
+function backToWelcome() {
+  if ($('app').hidden) return;
+  state._navPushed = false;
+  if (state.mode === 'follower') { exitFollowerToWelcome(); }
+  else { $('app').hidden = true; $('welcome').hidden = false; updateResumeFollow(); }
+}
+/** Interception du bouton retour : ferme une feuille en priorité, sinon retour à l'accueil. */
+function onBackButton() {
+  if (closeOpenOverlays()) {
+    // on ré-empile toujours pour garder le piège actif (le guard de pushAppHistory ne s'applique pas ici)
+    try { history.pushState({ rn: 'app' }, ''); } catch (_) { /* ignore */ }
+    state._navPushed = true;
+    return;
+  }
+  if (!$('app').hidden) backToWelcome();
+}
+
 function fmtDist(m) {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
 }
@@ -2487,6 +2524,7 @@ function exitFollowerToWelcome() {
   stopFollowerPolling();
   if (state.map) state.map.clearAthletes();
   state.mode = 'athlete';
+  state._navPushed = false;
   $('app').hidden = true;
   $('welcome').hidden = false;
   updateResumeFollow();
