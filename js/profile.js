@@ -25,6 +25,9 @@ export class ProfileChart {
     this.media = [];            // médias géolocalisés (📷) cliquables
     this.onMediaTap = null;
     this.finishBarrier = false; // barrière horaire à l'arrivée
+    this.terrain = null;      // nature du sol : { segs:[[a,b,code]] }
+    this.terrainColors = null;// map code → couleur
+    this.terrainOn = false;   // calque terrain affiché ?
     this.cursorD = null;      // distance de la position courante (m)
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
     this.minSpan = 120;       // largeur minimale visible (m)
@@ -59,6 +62,8 @@ export class ProfileChart {
     this.render();
   }
   setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
+  setTerrain(data, colors) { this.terrain = data; this.terrainColors = colors; this.render(); }
+  setTerrainOn(on) { this.terrainOn = !!on; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
     if (view === 'climb' && range) this.win = [range[0], range[1]];
@@ -184,6 +189,25 @@ export class ProfileChart {
     ctx.lineWidth = 1.6 * this.dpr;
     ctx.lineJoin = 'round';
     ctx.stroke();
+
+    // --- calque « nature du sol » : bandeau coloré au bas du profil ---
+    if (this.terrainOn && this.terrain && this.terrain.segs) {
+      const band = 13 * this.dpr;
+      const yTop = (h - p.b) - band;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(p.l, yTop, s.plotW, band);
+      for (const seg of this.terrain.segs) {
+        const a = seg[0], b = seg[1], code = seg[2];
+        if (b < d0 || a > d1) continue;
+        const xa = Math.max(p.l, x(a)), xb = Math.min(w - p.r, x(b));
+        if (xb <= xa) continue;
+        ctx.fillStyle = (this.terrainColors && this.terrainColors[code]) || '#888';
+        ctx.fillRect(xa, yTop, xb - xa, band);
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1 * this.dpr;
+      ctx.strokeRect(p.l, yTop, s.plotW, band);
+    }
 
     // --- zones de côtes (surlignage + étiquette) ---
     for (const c of this.climbs) {

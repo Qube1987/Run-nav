@@ -66,6 +66,17 @@ export async function cloudLoad(code) {
   return (Array.isArray(rows) ? rows[0] : rows) || null;
 }
 
+/** Nature du sol (segments dérivés d'OSM) d'une épreuve, par empreinte GPX. */
+export async function fetchTerrain(gpxKey) {
+  if (!gpxKey) return null;
+  const res = await apiFetch('/rest/v1/rpc/runnav_get_terrain', {
+    method: 'POST', body: JSON.stringify({ p_gpx_key: gpxKey }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data && Array.isArray(data.segs)) ? data : null;
+}
+
 /** Liste les épreuves du compte connecté (RLS filtre automatiquement sur user_id). */
 export async function cloudListRaces() {
   const path = `/rest/v1/${TABLE}?select=code,name,gpx_key,updated_at&order=updated_at.desc`;

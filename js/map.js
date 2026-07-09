@@ -69,6 +69,26 @@ export class RaceMap {
 
     this.map.fitBounds(this.trackLine.getBounds(), { padding: [30, 30] });
     this._latlngs = latlngs;
+    this._points = points; // pour le calque terrain (découpe par distance)
+  }
+
+  /** Calque « nature du sol » : recolore la trace par segments. `data.segs` = [[dA,dB,code]]. */
+  setTerrain(data, colors, on) {
+    if (this.terrainLayer) { this.terrainLayer.remove(); this.terrainLayer = null; }
+    if (this.trackLine) this.trackLine.setStyle({ opacity: on ? 0.15 : 0.9 });
+    if (!on || !data || !data.segs || !this._points) { if (this.doneLine) this.doneLine.bringToFront(); return; }
+    const pts = this._points;
+    this.terrainLayer = L.layerGroup();
+    for (const seg of data.segs) {
+      const a = seg[0], b = seg[1], code = seg[2];
+      const ll = [];
+      for (const p of pts) { if (p.d >= a && p.d <= b) ll.push([p.lat, p.lon]); }
+      if (ll.length < 2) continue;
+      L.polyline(ll, { color: (colors && colors[code]) || '#888', weight: 6, opacity: 0.95, lineJoin: 'round', lineCap: 'round' })
+        .addTo(this.terrainLayer);
+    }
+    this.terrainLayer.addTo(this.map);
+    if (this.doneLine) this.doneLine.bringToFront(); // garde la portion parcourue visible
   }
 
   /** Met à jour la portion parcourue jusqu'à l'index de segment donné. */

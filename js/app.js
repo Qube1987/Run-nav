@@ -14,7 +14,7 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
-  cloudListRaces, cloudDeleteRace,
+  cloudListRaces, cloudDeleteRace, fetchTerrain,
 } from './storage.js';
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
@@ -29,6 +29,19 @@ import {
 } from './live.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Calque « nature du sol » : couleurs + libellés (très contrastés, lisibles sur le terrain).
+const TERRAIN = {
+  route:     { c: '#8a9096', label: 'Route / goudron' },
+  compacte:  { c: '#b7a184', label: 'Chemin compacté' },
+  terre:     { c: '#a86a37', label: 'Terre / naturel' },
+  sentier:   { c: '#3f9d54', label: 'Sentier' },
+  gravier:   { c: '#e0c33a', label: 'Gravier / caillouteux' },
+  rocaille:  { c: '#ef8a2b', label: 'Rocailleux' },
+  technique: { c: '#e0392c', label: 'Technique / rocheux' },
+  inconnu:   { c: '#5b636e', label: 'Inconnu' },
+};
+const TERRAIN_COLORS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.c]));
 
 // Cadence réseau (ms) — une SEULE boucle par mode réveille la radio à intervalle fixe
 // (diffusion + sondages regroupés au même tick = un seul réveil radio par cycle).
@@ -59,7 +72,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -132,6 +145,8 @@ const state = {
   gpxKey: null,
   cloudCode: null,
   groupId: null,        // identifiant du salon de groupe (propagé par le code de partage, pas par le hash GPX)
+  terrain: null,        // nature du sol (segments OSM) de l'épreuve
+  terrainOn: false,     // calque terrain affiché
   finishMeta: { info: '', cutoff: null, label: '🏁 Arrivée', icons: [], color: '' },
   _saveT: null,
 };
@@ -231,6 +246,7 @@ function init() {
 
   $('pf-full').addEventListener('click', () => setProfileView('full'));
   $('pf-zoom').addEventListener('click', () => setProfileView('climb'));
+  $('pf-terrain').addEventListener('click', toggleTerrain);
   $('pf-follow').addEventListener('click', () => {
     state.follow = !state.follow;
     $('pf-follow').classList.toggle('active', state.follow);
@@ -562,6 +578,7 @@ function startApp(track) {
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
+  loadTerrain(); // nature du sol (si disponible pour cette trace)
 
   // synchronise l'UI (type d'effort, mode, vitesse) avec la config restaurée
   document.querySelectorAll('[data-activity]').forEach((b) =>
@@ -1763,6 +1780,42 @@ function onBackButton() {
     return;
   }
   if (!$('app').hidden) backToWelcome();
+}
+
+// ------------------------------------------------------------------ CALQUE NATURE DU SOL
+async function loadTerrain() {
+  state.terrain = null; state.terrainOn = false;
+  $('pf-terrain').hidden = true; $('pf-terrain').classList.remove('active');
+  $('terrain-legend').hidden = true;
+  if (state.map) state.map.setTerrain(null, TERRAIN_COLORS, false);
+  if (state.profile) { state.profile.setTerrain(null, TERRAIN_COLORS); state.profile.setTerrainOn(false); }
+  let data = null;
+  try { data = await fetchTerrain(state.gpxKey); } catch (_) { /* ignore */ }
+  if (!data || state.gpxKey == null) return;
+  state.terrain = data;
+  $('pf-terrain').hidden = false;         // le bouton n'apparaît que si des données existent
+  if (state.profile) state.profile.setTerrain(data, TERRAIN_COLORS);
+}
+function toggleTerrain() {
+  if (!state.terrain) return;
+  state.terrainOn = !state.terrainOn;
+  $('pf-terrain').classList.toggle('active', state.terrainOn);
+  if (state.profile) state.profile.setTerrainOn(state.terrainOn);
+  if (state.map) state.map.setTerrain(state.terrain, TERRAIN_COLORS, state.terrainOn);
+  renderTerrainLegend();
+}
+function renderTerrainLegend() {
+  const el = $('terrain-legend');
+  if (!state.terrainOn || !state.terrain) { el.hidden = true; return; }
+  // classes présentes, triées par distance couverte (les plus fréquentes d'abord)
+  const km = {};
+  for (const s of state.terrain.segs) km[s[2]] = (km[s[2]] || 0) + (s[1] - s[0]);
+  const codes = Object.keys(km).sort((a, b) => km[b] - km[a]);
+  el.innerHTML = '<div class="tl-title">🪨 Nature du sol</div>' + codes.map((c) => {
+    const t = TERRAIN[c] || { c: '#888', label: c };
+    return `<div class="tl-row"><span class="tl-sw" style="background:${t.c}"></span>${t.label} · ${(km[c] / 1000).toFixed(1)} km</div>`;
+  }).join('');
+  el.hidden = false;
 }
 
 function fmtDist(m) {
