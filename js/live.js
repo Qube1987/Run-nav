@@ -56,6 +56,16 @@ export async function resolveFollow(followCode) {
   const rows = await res.json();
   return (Array.isArray(rows) ? rows[0] : rows) || null;
 }
+/** À partir d'un code de suivi, liste tous les coureurs du même groupe (même salon). */
+export async function fetchGroupFollows(followCode) {
+  const res = await apiFetch('/rest/v1/rpc/runnav_group_follows', {
+    method: 'POST',
+    body: JSON.stringify({ p_follow_code: String(followCode || '').trim().toUpperCase() }),
+  });
+  if (!res.ok) return [];
+  return await res.json();
+}
+
 /** Fixe le code de suivi d'une épreuve (réservé au propriétaire via RLS). */
 export async function setFollowCode(raceCode, followCode) {
   const res = await apiFetch(`/rest/v1/runnav_configs?code=eq.${encodeURIComponent(raceCode)}`, {

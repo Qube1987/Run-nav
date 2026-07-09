@@ -23,7 +23,7 @@ import {
   broadcastPosition, setLiveActive, fetchLive,
   uploadMedia, fetchMedia, deleteMedia, mediaUrl,
   postCheer, fetchCheers,
-  resolveFollow, setFollowCode, getFollowCode,
+  resolveFollow, setFollowCode, getFollowCode, fetchGroupFollows,
   fetchMyProfile, saveMyProfile, uploadAvatar, avatarUrl,
   registerFollower, fetchFollowers,
 } from './live.js';
@@ -59,7 +59,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2259,7 +2259,7 @@ async function followRace(code, pseudo) {
 }
 
 /** Ajoute un athlète (par code de suivi) et l'affiche. */
-async function followAthlete(code, pseudo) {
+async function followAthlete(code, pseudo, expand = true) {
   code = (code || '').trim().toUpperCase();
   pseudo = (pseudo || state.followPseudo || '').trim();
   if (code.length < 4) { showWelcomeError('Saisis un code de suivi valide.'); toast('Code de suivi invalide.'); return false; }
@@ -2277,8 +2277,26 @@ async function followAthlete(code, pseudo) {
   let idx = state.follows.findIndex((f) => f.code === code);
   if (idx < 0) { state.follows.push({ code, name: row.name || 'Course', athleteName: aName, avatar, salon }); idx = state.follows.length - 1; saveFollows(); }
   else { state.follows[idx].name = row.name || state.follows[idx].name; state.follows[idx].athleteName = aName || state.follows[idx].athleteName; state.follows[idx].avatar = avatar || state.follows[idx].avatar; state.follows[idx].salon = salon || state.follows[idx].salon; saveFollows(); }
+  if (expand) await maybeFollowWholeGroup(code, pseudo); // propose de suivre tous les coureurs de l'épreuve
   await openFollowAthlete(idx);
   return true;
+}
+
+/** Propose d'ajouter d'un coup tous les autres coureurs de la même épreuve (même groupe). */
+async function maybeFollowWholeGroup(code, pseudo) {
+  let members = [];
+  try { members = await fetchGroupFollows(code); } catch (_) { return; }
+  const others = (members || []).filter((m) => m.follow_code
+    && m.follow_code.toUpperCase() !== code.toUpperCase()
+    && !state.follows.some((f) => f.code === m.follow_code.toUpperCase()));
+  if (!others.length) return;
+  const names = others.map((m) => (m.athlete_name || m.follow_code)).join(', ');
+  const n = others.length;
+  if (!confirm(`${n} autre${n > 1 ? 's' : ''} coureur${n > 1 ? 's' : ''} sur cette épreuve : ${names}.\nLes suivre aussi ?`)) return;
+  for (const m of others) {
+    try { await followAthlete(m.follow_code.toUpperCase(), pseudo, false); } catch (_) { /* ignore */ }
+  }
+  toast(`👀 Tu suis ${n + 1} coureurs de cette épreuve.`);
 }
 
 /** Affiche l'athlète d'indice idx (recharge sa trace si besoin). */
