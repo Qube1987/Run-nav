@@ -42,6 +42,7 @@ const TERRAIN = {
   inconnu:   { c: '#5b636e', label: 'Inconnu' },
 };
 const TERRAIN_COLORS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.c]));
+const TERRAIN_LABELS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.label]));
 
 // Courabilité des descentes = nature du sol × déclivité.
 // Score 0..1 : 1 = on court à fond, 0 = on marche. Note pondérée par la longueur
@@ -95,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1823,13 +1824,13 @@ async function loadTerrain() {
   $('pf-terrain').hidden = true; $('pf-terrain').classList.remove('active');
   $('terrain-legend').hidden = true;
   if (state.map) state.map.setTerrain(null, TERRAIN_COLORS, false);
-  if (state.profile) { state.profile.setTerrain(null, TERRAIN_COLORS); state.profile.setTerrainOn(false); }
+  if (state.profile) { state.profile.setTerrain(null, TERRAIN_COLORS, TERRAIN_LABELS); state.profile.setTerrainOn(false); }
   let data = null;
   try { data = await fetchTerrain(state.gpxKey); } catch (_) { /* ignore */ }
   if (!data || state.gpxKey == null) return;
   state.terrain = data;
   $('pf-terrain').hidden = false;         // le bouton n'apparaît que si des données existent
-  if (state.profile) state.profile.setTerrain(data, TERRAIN_COLORS);
+  if (state.profile) state.profile.setTerrain(data, TERRAIN_COLORS, TERRAIN_LABELS);
   computeDescents();                       // indice de courabilité (dépend du terrain)
 }
 

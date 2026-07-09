@@ -27,6 +27,7 @@ export class ProfileChart {
     this.finishBarrier = false; // barrière horaire à l'arrivée
     this.terrain = null;      // nature du sol : { segs:[[a,b,code]] }
     this.terrainColors = null;// map code → couleur
+    this.terrainLabels = null;// map code → libellé
     this.terrainOn = false;   // calque terrain affiché ?
     this.descents = [];       // descentes notées : [{startD,endD,label,color}]
     this.cursorD = null;      // distance de la position courante (m)
@@ -63,7 +64,7 @@ export class ProfileChart {
     this.render();
   }
   setFinishBarrier(on) { this.finishBarrier = !!on; this.render(); }
-  setTerrain(data, colors) { this.terrain = data; this.terrainColors = colors; this.render(); }
+  setTerrain(data, colors, labels) { this.terrain = data; this.terrainColors = colors; this.terrainLabels = labels || null; this.render(); }
   setTerrainOn(on) { this.terrainOn = !!on; this.render(); }
   setDescents(list) { this.descents = Array.isArray(list) ? list : []; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
@@ -209,6 +210,36 @@ export class ProfileChart {
       ctx.strokeStyle = 'rgba(0,0,0,0.5)';
       ctx.lineWidth = 1 * this.dpr;
       ctx.strokeRect(p.l, yTop, s.plotW, band);
+
+      // --- étiquettes de nature du sol (sur les tronçons assez larges) ---
+      // on fusionne les segments consécutifs de même nature pour ne pas répéter
+      // « Sentier · Sentier · … » et gagner de la place.
+      ctx.font = `700 ${9 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const yMid = yTop + band / 2;
+      const segs = this.terrain.segs;
+      let r = 0;
+      while (r < segs.length) {
+        let e = r;
+        while (e + 1 < segs.length && segs[e + 1][2] === segs[r][2] && segs[e + 1][0] <= segs[e][1] + 1) e++;
+        const a = segs[r][0], b = segs[e][1], code = segs[r][2];
+        r = e + 1;
+        if (b < d0 || a > d1) continue;
+        const xa = Math.max(p.l, x(a)), xb = Math.min(w - p.r, x(b));
+        const room = xb - xa - 4 * this.dpr;
+        if (room <= 0) continue;
+        const label = (this.terrainLabels && this.terrainLabels[code]) || code;
+        const shrt = label.split(' / ')[0];       // repli : premier mot avant « / »
+        const txt = ctx.measureText(label).width <= room ? label
+          : (ctx.measureText(shrt).width <= room ? shrt : null);
+        if (!txt) continue;
+        // contour sombre + remplissage blanc : lisible sur fonds clairs (gravier) et foncés
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5 * this.dpr;
+        ctx.strokeText(txt, (xa + xb) / 2, yMid);
+        ctx.fillStyle = 'rgba(255,255,255,0.96)';
+        ctx.fillText(txt, (xa + xb) / 2, yMid);
+      }
 
       // --- courabilité des descentes : bandeau juste au-dessus + étiquette ---
       if (this.descents && this.descents.length) {
