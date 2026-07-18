@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -701,7 +701,7 @@ function toggleTracking() {
   btn.querySelector('span:last-child').textContent = 'Suivi actif';
   toast('Suivi GPS démarré.');
   startLiveBroadcast();
-  requestWakeLock(); // empêche l'écran de s'éteindre (sinon le suivi se suspend)
+  startKeepAlive(); // maintient l'appli active en arrière-plan (écran éteint)
 }
 
 function stopTracking() {
@@ -715,34 +715,53 @@ function stopTracking() {
   btn.querySelector('span:last-child').textContent = 'Démarrer';
   toast('Suivi arrêté.');
   stopLiveBroadcast();
-  releaseWakeLock();
+  stopKeepAlive();
 }
 
-// ---- Verrou de réveil : empêche la mise en veille de l'écran pendant le suivi ----
-// Sans lui, l'écran s'éteint tout seul au bout de quelques secondes, la géoloc et les
-// boucles réseau se suspendent, et le suivi s'arrête. Le verrou se libère
-// automatiquement quand l'appli passe en arrière-plan (ou écran éteint à la main) :
-// on le redemande au retour au premier plan tant que le suivi est actif.
-async function requestWakeLock() {
-  if (!('wakeLock' in navigator)) {
-    toast('⚠️ Empêche la mise en veille de ton écran pour que le suivi continue.');
-    return;
-  }
+// ---- Maintien en arrière-plan (écran éteint) pendant le suivi ----------------------
+// Un onglet/PWA est gelé par l'OS quand l'écran s'éteint : minuteurs et géoloc
+// s'arrêtent, donc plus aucune position n'est poussée. Contournement éprouvé des
+// traceurs web : jouer un son INAUDIBLE en boucle. Android garde vivant un
+// processus qui lit de l'audio → la boucle réseau continue de pousser la position
+// même écran éteint. Démarré depuis le geste utilisateur (bouton Démarrer) pour que
+// la lecture automatique soit autorisée.
+let _keepAudio = null;
+let _keepWanted = false;
+/** Construit un fichier WAV d'une seconde de silence (blob URL, bouclé). */
+function makeSilentWavUrl() {
+  const rate = 8000, n = rate; // 1 s
+  const buf = new ArrayBuffer(44 + n), view = new DataView(buf);
+  const wr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  wr(0, 'RIFF'); view.setUint32(4, 36 + n, true); wr(8, 'WAVE');
+  wr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+  wr(36, 'data'); view.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) view.setUint8(44 + i, 128); // 128 = silence (PCM 8 bits non signé)
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function startKeepAlive() {
+  _keepWanted = true;
   try {
-    state._wakeLock = await navigator.wakeLock.request('screen');
-    state._wakeLock.addEventListener('release', () => { state._wakeLock = null; });
-  } catch (_) {
-    state._wakeLock = null;
-    toast('⚠️ Garde l’écran allumé (désactive la veille auto) — sinon le suivi s’arrête.');
-  }
+    if (!_keepAudio) {
+      _keepAudio = new Audio(makeSilentWavUrl());
+      _keepAudio.loop = true;
+      // si l'OS/la notif média met en pause, on relance tant que le suivi tourne
+      _keepAudio.addEventListener('pause', () => { if (_keepWanted) _keepAudio.play().catch(() => {}); });
+    }
+    _keepAudio.play().catch(() => {
+      toast('⚠️ Mets l’appli au premier plan une fois pour activer le suivi en arrière-plan.');
+    });
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new window.MediaMetadata({ title: 'Suivi en cours', artist: 'Run-Nav' });
+        navigator.mediaSession.setActionHandler('pause', () => {}); // ignore la pause depuis la notif
+      } catch (_) { /* ignore */ }
+    }
+  } catch (_) { /* audio indisponible : le suivi marchera au moins écran allumé */ }
 }
-function releaseWakeLock() {
-  const wl = state._wakeLock; state._wakeLock = null;
-  if (wl) { try { wl.release(); } catch (_) { /* déjà libéré */ } }
-}
-/** Re-demande le verrou au retour au premier plan (il se libère seul en arrière-plan). */
-async function reacquireWakeLock() {
-  if (state.watchId != null && !state._wakeLock && !document.hidden) await requestWakeLock();
+function stopKeepAlive() {
+  _keepWanted = false;
+  if (_keepAudio) { try { _keepAudio.pause(); } catch (_) { /* déjà en pause */ } }
 }
 
 function onGeoError(err) {
@@ -2670,7 +2689,8 @@ function onVisibilityChange() {
   } else {
     // Athlète : la boucle continue (elle POUSSE encore la position) mais passe à ~1×/min.
     restartAthleteNet();
-    if (!document.hidden) reacquireWakeLock(); // le verrou d'écran s'est libéré en arrière-plan
+    // filet de sécurité : si le maintien audio s'est arrêté, on le relance tant qu'on suit.
+    if (_keepWanted && _keepAudio && _keepAudio.paused) _keepAudio.play().catch(() => {});
   }
 }
 function toggleEco() {
