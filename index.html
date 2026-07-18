@@ -444,6 +444,24 @@
     </div>
   </div>
 
+  <!-- Rappel « suivi en arrière-plan » au démarrage du suivi -->
+  <div id="bg-modal" class="code-modal" hidden>
+    <div class="cm-bg" data-bgclose></div>
+    <div class="cm-card">
+      <button class="cm-close" data-bgclose type="button">✕</button>
+      <h3 class="cm-title">📍 Suivi en arrière-plan</h3>
+      <p class="bg-lead">Ton suivi continue <b>écran éteint, téléphone en poche</b>. Un dernier réglage pour être tranquille :</p>
+      <div class="bg-steps">
+        <div class="bg-step"><span>🔋</span><div><b>Batterie « Non restreinte »</b><br>Réglages du téléphone → Applis → <b>Run-Nav</b> → Batterie → coche <b>Non restreinte</b>.</div></div>
+        <div class="bg-step"><span>📡</span><div>Garde le <b>GPS activé</b> et une connexion (données mobiles ou Wi-Fi).</div></div>
+        <div id="bg-install" class="bg-step" hidden><span>📲</span><div>Pour plus de fiabilité, <b>installe Run-Nav</b> sur ton écran d’accueil (menu du navigateur → « Ajouter à l’écran d’accueil »).</div></div>
+        <div class="bg-step"><span>✅</span><div>C’est tout — tu peux <b>éteindre l’écran</b>, ta position reste partagée (~1×/min).</div></div>
+      </div>
+      <button id="bg-modal-ok" class="cm-copy" type="button">Compris 👍</button>
+      <label class="bg-dontshow"><input type="checkbox" id="bg-dontshow"> Ne plus afficher</label>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
 

@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v79';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -320,6 +320,9 @@ function init() {
   document.querySelectorAll('[data-cmclose]').forEach((el) => el.addEventListener('click', () => { $('code-modal').hidden = true; }));
   $('code-modal-share').addEventListener('click', doCodeShare);
   $('code-modal-copy').addEventListener('click', copyCode);
+  // Rappel « suivi en arrière-plan »
+  document.querySelectorAll('[data-bgclose]').forEach((el) => el.addEventListener('click', closeBgNotice));
+  $('bg-modal-ok').addEventListener('click', closeBgNotice);
 
   // édition noms / infos / barrières dans la table (délégation)
   $('pace-table').addEventListener('change', (e) => {
@@ -702,6 +705,20 @@ function toggleTracking() {
   toast('Suivi GPS démarré.');
   startLiveBroadcast();
   startKeepAlive(); // maintient l'appli active en arrière-plan (écran éteint)
+  showBgNotice();   // rappel du réglage batterie pour un suivi fiable écran éteint
+}
+
+/** Rappel « suivi en arrière-plan » au démarrage du suivi (sauf si masqué). */
+function showBgNotice() {
+  if (localGet('bgNoticeOff') === '1') return;
+  const installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  $('bg-install').hidden = installed;          // conseil d'installation seulement si pas installé
+  $('bg-dontshow').checked = false;
+  $('bg-modal').hidden = false;
+}
+function closeBgNotice() {
+  if ($('bg-dontshow').checked) localSet('bgNoticeOff', '1');
+  $('bg-modal').hidden = true;
 }
 
 function stopTracking() {
