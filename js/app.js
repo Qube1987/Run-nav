@@ -96,7 +96,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -701,6 +701,7 @@ function toggleTracking() {
   btn.querySelector('span:last-child').textContent = 'Suivi actif';
   toast('Suivi GPS démarré.');
   startLiveBroadcast();
+  requestWakeLock(); // empêche l'écran de s'éteindre (sinon le suivi se suspend)
 }
 
 function stopTracking() {
@@ -714,6 +715,34 @@ function stopTracking() {
   btn.querySelector('span:last-child').textContent = 'Démarrer';
   toast('Suivi arrêté.');
   stopLiveBroadcast();
+  releaseWakeLock();
+}
+
+// ---- Verrou de réveil : empêche la mise en veille de l'écran pendant le suivi ----
+// Sans lui, l'écran s'éteint tout seul au bout de quelques secondes, la géoloc et les
+// boucles réseau se suspendent, et le suivi s'arrête. Le verrou se libère
+// automatiquement quand l'appli passe en arrière-plan (ou écran éteint à la main) :
+// on le redemande au retour au premier plan tant que le suivi est actif.
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    toast('⚠️ Empêche la mise en veille de ton écran pour que le suivi continue.');
+    return;
+  }
+  try {
+    state._wakeLock = await navigator.wakeLock.request('screen');
+    state._wakeLock.addEventListener('release', () => { state._wakeLock = null; });
+  } catch (_) {
+    state._wakeLock = null;
+    toast('⚠️ Garde l’écran allumé (désactive la veille auto) — sinon le suivi s’arrête.');
+  }
+}
+function releaseWakeLock() {
+  const wl = state._wakeLock; state._wakeLock = null;
+  if (wl) { try { wl.release(); } catch (_) { /* déjà libéré */ } }
+}
+/** Re-demande le verrou au retour au premier plan (il se libère seul en arrière-plan). */
+async function reacquireWakeLock() {
+  if (state.watchId != null && !state._wakeLock && !document.hidden) await requestWakeLock();
 }
 
 function onGeoError(err) {
@@ -2641,6 +2670,7 @@ function onVisibilityChange() {
   } else {
     // Athlète : la boucle continue (elle POUSSE encore la position) mais passe à ~1×/min.
     restartAthleteNet();
+    if (!document.hidden) reacquireWakeLock(); // le verrou d'écran s'est libéré en arrière-plan
   }
 }
 function toggleEco() {
