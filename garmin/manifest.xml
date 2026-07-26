@@ -13,14 +13,15 @@
   L'application est un DATA FIELD : MapView / MapTrackView y sont interdits
   (§2.2 du cahier des charges) — la carte est un rendu vectoriel maison.
 
-  ⚠ `id` est un UUID à générer une fois pour toutes (VS Code : commande
-  « Monkey C: Generate Manifest », ou l'éditeur de manifeste du SDK). Celui
-  ci-dessous est un gabarit, à remplacer avant toute publication.
+  `id` : identifiant unique de l'application, 32 caractères hexadécimaux.
+  Généré une fois pour toutes — c'est l'IDENTITÉ de l'app. Le changer plus tard
+  reviendrait à publier une application différente sur le Connect IQ Store (les
+  installations existantes ne recevraient plus les mises à jour). À conserver.
 -->
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
     <iq:application
         entry="RunnavDataField"
-        id="0000000000000000000000000000000000000000"
+        id="311663a02204a6637ea04e47577906f1"
         launcherIcon="@Drawables.LauncherIcon"
         minApiLevel="4.0.0"
         name="@Strings.AppName"
