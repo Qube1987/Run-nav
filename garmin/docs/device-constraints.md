@@ -1,88 +1,81 @@
-# Contraintes device — À REMPLIR AVANT DE CODER LES RENDERERS
+# Contraintes device
 
-> **État : NON RENSEIGNÉ.** Ces valeurs doivent être **relevées dans le SDK
-> Connect IQ installé**, pas estimées. Le §2.3 du cahier des charges l'exige
-> explicitement, et se tromper ici invalide toute l'architecture mémoire.
->
-> Rien n'a été inventé dans ce fichier : les cases sont vides parce que
-> l'environnement où le projet a été démarré n'avait pas le SDK (téléchargement
-> sous licence Garmin, compte développeur requis — gratuit).
-
-## À relever
-
-### 1. SDK et API level
-
-```bash
-# version du SDK installé
-~/Library/Application\ Support/Garmin/ConnectIQ/Sdks/*/bin/monkeyc --version   # macOS
-%APPDATA%\Garmin\ConnectIQ\Sdks\*\bin\monkeyc --version                        # Windows
-```
+## Connu
 
 | | valeur |
 |---|---|
-| Version SDK | |
-| API level minimum ciblé | |
+| SDK de développement | **9.2.0** |
+| API level du device | **6.0** |
+| Cible v1 | **fēnix 8 AMOLED 47 mm** |
+| Identifiant Connect IQ | **`fenix847mm`** |
+| `minApiLevel` retenu | `4.0.0` (conservateur : le code n'utilise que Graphics, Activity, Application.Properties, Time) |
 
-### 2. Identifiants et résolutions des variantes Fenix 8
+L'image `fenix847mm` couvre aussi les 51 mm, tactix 8 et quatix 8 : ces modèles
+seront compatibles sans travail supplémentaire. Les autres variantes
+(`fenix843mm`, `fenix8pro47mm`, `fenix8solar47mm/51mm`) sont hors périmètre v1
+(§11) — le Solar est en MIP, donc contraste et coût de redessin différents.
 
-Les identifiants exacts (`fenix8…`) sont **à lire dans le SDK**, pas à deviner :
-ils conditionnent `manifest.xml`. Ils se trouvent dans le dossier des devices :
+## Reste à relever — 2 choses seulement
+
+Tout est dans le dossier device du SDK. Une seule commande donne l'essentiel :
 
 ```bash
-ls ~/Library/Application\ Support/Garmin/ConnectIQ/Devices/     # un dossier par device
-cat ~/Library/Application\ Support/Garmin/ConnectIQ/Devices/<id>/compiler.json
+# macOS
+cat ~/Library/Application\ Support/Garmin/ConnectIQ/Devices/fenix847mm/compiler.json
+# Windows (PowerShell)
+type $env:APPDATA\Garmin\ConnectIQ\Devices\fenix847mm\compiler.json
+# Linux
+cat ~/.Garmin/ConnectIQ/Devices/fenix847mm/compiler.json
 ```
 
-| variante | identifiant CIQ | résolution | écran | forme |
-|---|---|---|---|---|
-| Fenix 8 43 mm | | | AMOLED ? | rond |
-| Fenix 8 47 mm | | | | |
-| Fenix 8 51 mm | | | | |
-| Fenix 8 Solar 47 mm | | | MIP ? | |
-| Fenix 8 Solar 51 mm | | | | |
+### 1. Budget mémoire d'un data field — **la contrainte dure**
 
-⚠ AMOLED et MIP/Solar n'ont ni la même définition ni le même comportement
-d'affichage : le §5.3 (contraste, lisibilité plein soleil) et le §6.2 (coût du
-redessin) en dépendent.
+Dans `compiler.json`, la mémoire est déclarée **par type d'application** :
+prendre la valeur du type `datafield` (bien plus serrée que `watch-app`).
 
-### 3. Budget mémoire d'un data field — **la contrainte dure**
-
-Dans `compiler.json` de chaque device, champ de mémoire pour le type
-`datafield` (distinct de `widget` / `watch-app`).
-
-| variante | budget data field | 70 % (cible §9) |
+| | valeur | cible §9 (70 %) |
 |---|---|---|
-| | | |
+| budget data field | *à relever* | |
 
-**Ce que ça conditionne directement :**
+Ce que ça pilote :
 
-- `SIZE_WARN_BYTES` dans `run-nav/js/coursepack.js` — aujourd'hui **provisoire à
-  32 Ko**, à recaler ici.
-- La taille de la polyline embarquée. Ordre de grandeur mesuré côté producteur :
-  pack RT 2026 (108 km) = **18,4 Ko de JSON**. Une fois chargé, `CoursePack`
-  matérialise 3 tableaux de `n` éléments (`xs`, `ys` en Float, `cum` en Number) :
-  pour n = 1 170, compter **~14 Ko** en plus du JSON décodé — à vérifier au
-  profiler, c'est probablement le poste dominant.
-- Si le budget est trop serré : baisser `trackMaxPoints` dans l'exporteur (la
-  clé `dd` garantit que la **distance reste exacte** même avec une polyline
-  grossière — seul le tracé se dégrade). C'est précisément ce que cette
-  architecture permet.
+- `SIZE_WARN_BYTES` dans `run-nav/js/coursepack.js` — **provisoire à 32 Ko**.
+- `trackMaxPoints` de l'exporteur. Empreinte mesurée côté producteur pour
+  RT 2026 (108 km) : **18,4 Ko de JSON**, plus ~**14 Ko** une fois matérialisé
+  par `CoursePack` (3 tableaux de 1 170 éléments : `xs`, `ys` en Float, `cum` en
+  Number). Poste probablement dominant, à confirmer au profiler.
+- La faisabilité du `BufferedBitmap` du §6.2 (pré-rendu du fond de carte). S'il
+  ne rentre pas, on redessine la trace à chaque `onUpdate()` — d'où l'intérêt
+  du culling déjà en place dans `MapRenderer`.
 
-### 4. Comportement en basse consommation
+> Si le budget est trop serré, **baisser `trackMaxPoints` est sans danger pour
+> les distances** : la clé `dd` garantit une abscisse exacte même avec une
+> polyline grossière. Seul le tracé se dégrade. C'est tout l'intérêt de cette
+> architecture.
+
+### 2. Comportement AMOLED en basse consommation
+
+Pas dans un fichier : à observer au simulateur et sur la montre.
 
 | question | réponse |
 |---|---|
-| Fréquence d'appel de `compute()` écran allumé | |
-| Fréquence d'appel de `compute()` écran éteint | |
+| Fréquence de `compute()` écran allumé | *à observer* |
+| Fréquence de `compute()` écran éteint / always-on | |
 | `onUpdate()` est-il appelé écran éteint ? | |
-| Spécificité AMOLED (always-on, burn-in protection) | |
+| Contraintes anti-burn-in (AMOLED) | |
 
 Conditionne le §6.2 (ne rien calculer ni rendre en basse conso) et le test
 batterie du §9 (surcoût < 8 %).
 
-## Une fois rempli
+## Résolution
+
+Non bloquante : `MapRenderer` et `ClimbRenderer` travaillent en **proportions**
+de `dc.getWidth()` / `dc.getHeight()`, avec la marge de 12 % du §5.3. La valeur
+exacte servira surtout à figer le choix des polices — à vérifier à l'œil dans le
+simulateur, plus fiable qu'un calcul.
+
+## Une fois relevé
 
 1. Recaler `SIZE_WARN_BYTES` côté run-nav.
-2. Compléter `manifest.xml` avec les vrais identifiants de produits.
-3. Rejouer `tools/locator-test.mjs` (ne dépend pas du SDK) puis lancer le
-   simulateur pour valider `CoursePack` + `Locator` sur device réel.
+2. `./build.sh` puis `./build.sh sim` — première compilation.
+3. Rejouer les bancs d'essai hors SDK : `cd tools && node locator-test.mjs && node pacemodel-test.mjs && node zoom-test.mjs`

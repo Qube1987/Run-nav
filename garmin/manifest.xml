@@ -1,31 +1,33 @@
 <?xml version="1.0"?>
 <!--
-  ⚠ IDENTIFIANTS DE PRODUITS À COMPLÉTER.
+  Cible : fēnix 8 AMOLED 47 mm → identifiant Connect IQ `fenix847mm`.
+  (La même image couvre 47/51 mm, tactix 8 et quatix 8 ; les autres variantes
+  — fenix843mm, fenix8pro47mm, fenix8solar47mm/51mm — sont hors périmètre v1,
+  cf. §11, et s'ajouteront ici après validation terrain.)
 
-  Les identifiants exacts des variantes Fenix 8 doivent être LUS DANS LE SDK, pas
-  devinés (une valeur inventée fait échouer le build ou, pire, cible le mauvais
-  device) :
-
-      ls ~/Library/Application\ Support/Garmin/ConnectIQ/Devices/
-
-  Reporter ensuite chaque identifiant ci-dessous, et remplir
-  docs/device-constraints.md (résolutions + budget mémoire data field).
+  SDK de développement : 9.2.0 · le device tourne en API level 6.0.
+  minApiLevel volontairement conservateur : le code n'utilise que des API
+  anciennes et stables (Graphics, Activity, Application.Properties, Time). À
+  remonter seulement si le compilateur l'exige.
 
   L'application est un DATA FIELD : MapView / MapTrackView y sont interdits
   (§2.2 du cahier des charges) — la carte est un rendu vectoriel maison.
+
+  ⚠ `id` est un UUID à générer une fois pour toutes (VS Code : commande
+  « Monkey C: Generate Manifest », ou l'éditeur de manifeste du SDK). Celui
+  ci-dessous est un gabarit, à remplacer avant toute publication.
 -->
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
     <iq:application
         entry="RunnavDataField"
         id="0000000000000000000000000000000000000000"
         launcherIcon="@Drawables.LauncherIcon"
-        minApiLevel="3.2.0"
+        minApiLevel="4.0.0"
         name="@Strings.AppName"
         type="datafield">
 
         <iq:products>
-            <!-- TODO remplacer par les identifiants réels relevés dans le SDK -->
-            <!-- <iq:product id="fenix8…"/> -->
+            <iq:product id="fenix847mm"/>
         </iq:products>
 
         <iq:permissions>

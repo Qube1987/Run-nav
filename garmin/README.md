@@ -26,7 +26,7 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 
 | jalon | état |
 |---|---|
-| 1 — squelette, manifest, `docs/device-constraints.md` | 🟡 squelette posé, **contraintes device non relevées** (pas de SDK) |
+| 1 — squelette, manifest, `docs/device-constraints.md` | 🟡 cible `fenix847mm` câblée (SDK 9.2.0, API 6.0) ; **budget mémoire à relever** |
 | 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
 | 3 — `CoursePack` + `Locator` | 🟡 **algorithme validé**, code Monkey C **non compilé** |
 | 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟡 **modèle VAM/ETA validé**, rendu **non compilé** |
@@ -109,8 +109,20 @@ tools/           implémentation de référence + tests rejouables (Node, sans S
   fixtures/      trace et pack réels servant de banc d'essai
 ```
 
+## Compiler
+
+```bash
+export CIQ_HOME="$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.2.0"
+./build.sh          # compile pour fenix847mm
+./build.sh sim      # + simulateur
+./build.sh fit activite.fit   # + rejeu d'une activité
+```
+
+La clé développeur est générée au premier appel (et ignorée par git).
+
 ## Prochaine étape
 
-Relever les valeurs de `docs/device-constraints.md` sur un poste avec le SDK
-(compte développeur Garmin : **gratuit**, SDK gratuit, publication gratuite).
-Elles conditionnent le budget de points de l'exporteur et donc les renderers.
+Relever les deux dernières valeurs de `docs/device-constraints.md` (budget
+mémoire data field, comportement basse conso), puis compiler : c'est la première
+confrontation du Monkey C au compilateur, et il faut s'attendre à des
+corrections.
