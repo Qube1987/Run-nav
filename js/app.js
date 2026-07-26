@@ -3,6 +3,7 @@
 import { parseGpx, buildTrack } from './gpx.js';
 import { projectOnTrack, pointAtDistance } from './geo.js';
 import { detectClimbs, currentClimb } from './climbs.js';
+import { buildCoursePack, SIZE_WARN_BYTES } from './coursepack.js';
 import { ProfileChart } from './profile.js';
 import { RaceMap } from './map.js';
 import { demoGpx } from './demo.js';
@@ -96,7 +97,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -316,6 +317,7 @@ function init() {
   $('cloud-save').addEventListener('click', cloudSaveNow);
   $('cloud-restore').addEventListener('click', cloudRestoreNow);
   $('cloud-invite').addEventListener('click', shareRaceInvite);
+  $('pack-export').addEventListener('click', exportCoursePack);
   // Fenêtre de partage d'un code (affichage visible + envoi du message pré-rempli)
   document.querySelectorAll('[data-cmclose]').forEach((el) => el.addEventListener('click', () => { $('code-modal').hidden = true; }));
   $('code-modal-share').addEventListener('click', doCodeShare);
@@ -2163,6 +2165,57 @@ async function shareLive() {
   const intro = state.mode === 'follower' ? 'Suis cet athlète en live' : 'Suis ma course en live';
   const text = `${intro} : ${url}\nCode de suivi : ${code}`;
   openCodeModal({ title: 'Code de suivi', code, sub: 'Donne ce code à tes supporters, ou envoie le message avec le lien ✉️', shareText: text });
+}
+
+// ------------------------------------------------------------------ EXPORT « COURSE PACK » (montre Garmin)
+// Produit le JSON compact consommé par le data field runnav-df : téléchargement
+// du fichier + copie dans le presse-papier, et rapport de contrôle affiché
+// (taille, budgets de points, écart de distance). Voir docs/coursepack.md.
+async function exportCoursePack() {
+  if (!state.track) { toast('Charge d’abord une épreuve.'); return; }
+  const el = $('pack-report');
+  let pack, report;
+  try {
+    ({ pack, report } = buildCoursePack({
+      name: state.track.name,
+      track: state.track,
+      climbs: state.climbs,
+      waypoints: state.waypoints,
+      startMs: state.startClock,
+    }));
+  } catch (err) { toast('Export impossible : ' + (err.message || '')); return; }
+
+  const json = JSON.stringify(pack);
+  const slug = (pack.n || 'course').toLowerCase().normalize('NFD')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'course';
+  const fileName = `coursepack-${slug}.json`;
+  // téléchargement
+  try {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (_) { /* le presse-papier reste disponible */ }
+  // presse-papier
+  let copied = false;
+  try { await navigator.clipboard.writeText(json); copied = true; } catch (_) { /* refusé */ }
+
+  const ko = (report.bytes / 1024).toFixed(1);
+  const warn = [];
+  if (!report.driftOk) warn.push(`⚠ écart de distance ${report.driftPct} % (> 0,5 %)`);
+  if (!report.budgetOk) warn.push('⚠ budget de points dépassé');
+  if (report.sizeWarn) warn.push(`⚠ pack volumineux (> ${Math.round(SIZE_WARN_BYTES / 1024)} Ko)`);
+  el.className = 'pack-report' + (warn.length ? ' warn' : ' ok');
+  el.innerHTML = `<b>${escapeHtml(fileName)}</b> · ${ko} Ko<br>`
+    + `trace ${report.trackPoints} pts (tol. ${report.trackTol} m) · profil ${report.profilePoints} pts · `
+    + `${report.climbs} côtes · ${report.pois} POI<br>`
+    + `distance ${(report.packDistance / 1000).toFixed(2)} km · écart ${report.driftPct} % `
+    + `(forme ${report.chordDriftPct} %)`
+    + (warn.length ? `<br>${warn.map(escapeHtml).join('<br>')}` : '')
+    + (copied ? '<br>📋 copié dans le presse-papier' : '');
+  el.hidden = false;
+  toast(warn.length ? '⌚ Pack généré (avec avertissements).' : '⌚ Course pack généré.');
 }
 
 // ------------------------------------------------------------------ FENÊTRE DE PARTAGE D'UN CODE
