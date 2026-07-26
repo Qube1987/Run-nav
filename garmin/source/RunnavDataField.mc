@@ -1,7 +1,8 @@
 // Data field « carte + côte en cours ».
 //
 // Câble l'ensemble : CoursePack (données) → Locator (abscisse) → PaceModel
-// (estimations) → MapRenderer (zone A, 2/3 haut) + ClimbRenderer (zone B, 1/3 bas).
+// (estimations) → MapRenderer (carte, haut) + ClimbRenderer (relief de la côte,
+// bas). Le partage vertical est réglable (§7, defaut 66 %).
 // Garantit le mode dégradé (§6.4) : jamais d'écran vide, jamais de crash.
 //
 // Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
@@ -22,6 +23,8 @@ class RunnavDataField extends WatchUi.DataField {
     private var pace as PaceModel or Null = null;
     private var heading as Lang.Float or Null = null;
     private var speed as Lang.Float = 1.5;
+    // partage vertical carte / côte, en % de la hauteur (§5, réglable §7)
+    private var splitPct as Lang.Number = 66;
 
     // projection plane (reprise du pack pour convertir lat/lon → mètres)
     private var cosLat as Lang.Float = 1.0;
@@ -52,6 +55,9 @@ class RunnavDataField extends WatchUi.DataField {
                 mapView.northUp = getSetting("orientation", 0) == 1;
                 mapView.showPoi = getSetting("showPOI", true);
                 mapView.offThreshold = getSetting("offCourseThreshold", 60);
+                splitPct = getSetting("zoneSplit", 66);
+                if (splitPct < 40) { splitPct = 40; }
+                if (splitPct > 80) { splitPct = 80; }
             }
         } catch (e) {
             // pack absent ou illisible → mode dégradé, surtout pas de crash
@@ -120,8 +126,8 @@ class RunnavDataField extends WatchUi.DataField {
             return;
         }
 
-        // 2/3 haut : carte vectorielle · 1/3 bas : côte en cours (§5)
-        var split = (h * 2) / 3;
+        // haut : carte vectorielle · bas : relief de la côte (§5, partage réglable)
+        var split = (h * splitPct) / 100;
         mapView.draw(dc, split, locator, heading, speed);
         climbView.draw(dc, split, locator.s.toNumber(), pace, locator.stale);
     }

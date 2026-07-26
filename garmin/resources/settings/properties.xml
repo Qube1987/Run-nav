@@ -4,5 +4,6 @@
   <property id="offCourseThreshold" type="number">60</property>
   <property id="initialVAM" type="number">450</property>
   <property id="showPOI" type="boolean">true</property>
+  <property id="zoneSplit" type="number">66</property>
   <property id="courseCode" type="string"></property>
 </properties>

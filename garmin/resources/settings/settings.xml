@@ -24,6 +24,9 @@
   <setting propertyKey="@Properties.showPOI" title="Afficher les points d'interet">
     <settingConfig type="boolean"/>
   </setting>
+  <setting propertyKey="@Properties.zoneSplit" title="Hauteur de la carte (%)">
+    <settingConfig type="numeric" min="40" max="80"/>
+  </setting>
   <setting propertyKey="@Properties.courseCode" title="Code course (mode dynamique)">
     <settingConfig type="alphaNumeric"/>
   </setting>
