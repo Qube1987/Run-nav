@@ -33,23 +33,23 @@ class CoursePack {
 
     // --- polyline projetée en mètres (plan local équirectangulaire) ---
     public var n as Lang.Number = 0;
-    public var xs as Lang.Array<Lang.Float> or Null = null;
-    public var ys as Lang.Array<Lang.Float> or Null = null;
+    public var xs as Lang.Array<Lang.Float> = new [0] as Lang.Array<Lang.Float>;
+    public var ys as Lang.Array<Lang.Float> = new [0] as Lang.Array<Lang.Float>;
     // Échelle de distances VRAIES le long de la polyline (clé `dd` du pack).
     // Indispensable : mesurer sur les cordes réintroduirait ~3 % d'erreur.
-    public var cum as Lang.Array<Lang.Number> or Null = null;
+    public var cum as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
 
     // --- profil, côtes, POI ---
-    public var profD as Lang.Array<Lang.Number> or Null = null;
-    public var profE as Lang.Array<Lang.Number> or Null = null;
-    public var climbS as Lang.Array<Lang.Number> or Null = null;
-    public var climbE as Lang.Array<Lang.Number> or Null = null;
-    public var climbG as Lang.Array<Lang.Number> or Null = null;
-    public var climbP as Lang.Array<Lang.Number> or Null = null;   // pente ‰
-    public var climbN as Lang.Array<Lang.String> or Null = null;
-    public var poiD as Lang.Array<Lang.Number> or Null = null;
-    public var poiK as Lang.Array<Lang.String> or Null = null;
-    public var poiN as Lang.Array<Lang.String> or Null = null;
+    public var profD as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var profE as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var climbS as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var climbE as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var climbG as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var climbP as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;   // pente ‰
+    public var climbN as Lang.Array<Lang.String> = new [0] as Lang.Array<Lang.String>;
+    public var poiD as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
+    public var poiK as Lang.Array<Lang.String> = new [0] as Lang.Array<Lang.String>;
+    public var poiN as Lang.Array<Lang.String> = new [0] as Lang.Array<Lang.String>;
 
     function initialize() {}
 
@@ -72,9 +72,9 @@ class CoursePack {
         n = dd.size() + 1;
         if (n < 2 || t.size() < (n - 1) * 2) { return false; }
 
-        xs = new [n];
-        ys = new [n];
-        cum = new [n];
+        xs = new [n] as Lang.Array<Lang.Float>;
+        ys = new [n] as Lang.Array<Lang.Float>;
+        cum = new [n] as Lang.Array<Lang.Number>;
 
         // Projection plane locale : à cette latitude, 1 rad de longitude vaut
         // R·cos(lat). Suffisant sur l'emprise d'une épreuve, et bien moins cher
@@ -104,10 +104,10 @@ class CoursePack {
     }
 
     private function loadProfile(p) as Void {
-        if (!(p instanceof Lang.Array)) { profD = null; profE = null; return; }
+        if (!(p instanceof Lang.Array)) { return; }   // profil absent : tableaux vides
         var m = p.size();
-        profD = new [m];
-        profE = new [m];
+        profD = new [m] as Lang.Array<Lang.Number>;
+        profE = new [m] as Lang.Array<Lang.Number>;
         for (var i = 0; i < m; i += 1) {
             profD[i] = p[i][0];
             profE[i] = p[i][1];
@@ -117,8 +117,8 @@ class CoursePack {
     private function loadClimbs(c) as Void {
         if (!(c instanceof Lang.Array)) { return; }
         var m = c.size();
-        climbS = new [m]; climbE = new [m]; climbG = new [m];
-        climbP = new [m]; climbN = new [m];
+        climbS = new [m] as Lang.Array<Lang.Number>; climbE = new [m] as Lang.Array<Lang.Number>; climbG = new [m] as Lang.Array<Lang.Number>;
+        climbP = new [m] as Lang.Array<Lang.Number>; climbN = new [m] as Lang.Array<Lang.String>;
         for (var i = 0; i < m; i += 1) {
             var e = c[i];
             climbS[i] = e["s"]; climbE[i] = e["e"];
@@ -131,7 +131,7 @@ class CoursePack {
     private function loadPois(v) as Void {
         if (!(v instanceof Lang.Array)) { return; }
         var m = v.size();
-        poiD = new [m]; poiK = new [m]; poiN = new [m];
+        poiD = new [m] as Lang.Array<Lang.Number>; poiK = new [m] as Lang.Array<Lang.String>; poiN = new [m] as Lang.Array<Lang.String>;
         for (var i = 0; i < m; i += 1) {
             var e = v[i];
             poiD[i] = e["d"];
@@ -144,7 +144,7 @@ class CoursePack {
 
     /** Index de la côte contenant l'abscisse s, ou -1. */
     function climbAt(s as Lang.Number) as Lang.Number {
-        if (climbS == null) { return -1; }
+        if (climbS.size() == 0) { return -1; }
         for (var i = 0; i < climbS.size(); i += 1) {
             if (s >= climbS[i] && s <= climbE[i]) { return i; }
         }
@@ -153,7 +153,7 @@ class CoursePack {
 
     /** Index de la prochaine côte devant s, ou -1. */
     function nextClimb(s as Lang.Number) as Lang.Number {
-        if (climbS == null) { return -1; }
+        if (climbS.size() == 0) { return -1; }
         for (var i = 0; i < climbS.size(); i += 1) {
             if (climbS[i] > s) { return i; }
         }
@@ -162,7 +162,7 @@ class CoursePack {
 
     /** Index du prochain POI devant s, ou -1. */
     function nextPoi(s as Lang.Number) as Lang.Number {
-        if (poiD == null) { return -1; }
+        if (poiD.size() == 0) { return -1; }
         for (var i = 0; i < poiD.size(); i += 1) {
             if (poiD[i] > s) { return i; }
         }
@@ -171,7 +171,7 @@ class CoursePack {
 
     /** Altitude interpolée du profil à l'abscisse s (m), 0 si indisponible. */
     function eleAt(s as Lang.Number) as Lang.Number {
-        if (profD == null || profD.size() < 2) { return 0; }
+        if (profD.size() < 2) { return 0; }
         var m = profD.size();
         if (s <= profD[0]) { return profE[0]; }
         if (s >= profD[m - 1]) { return profE[m - 1]; }
@@ -199,7 +199,7 @@ class CoursePack {
 
     /** D+ restant jusqu'au sommet de la côte i. */
     function gainRemaining(i as Lang.Number, s as Lang.Number) as Lang.Number {
-        if (climbS == null || i < 0 || i >= climbS.size()) { return 0; }
+        if (i < 0 || i >= climbS.size()) { return 0; }
         var top = eleAt(climbE[i]);
         var here = eleAt(s);
         var r = top - here;

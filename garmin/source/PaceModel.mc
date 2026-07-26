@@ -36,8 +36,10 @@ class PaceModel {
     function initialize(initialVAM as Lang.Number) {
         initial = initialVAM;
         vam = initialVAM.toFloat();
-        tBuf = new [SLOTS];
-        gBuf = new [SLOTS];
+        // `new [n]` produit un Array<Null> : on type explicitement, sinon
+        // l'affectation aux membres typés est refusée.
+        tBuf = new [SLOTS] as Lang.Array<Lang.Number>;
+        gBuf = new [SLOTS] as Lang.Array<Lang.Float>;
         for (var i = 0; i < SLOTS; i += 1) { tBuf[i] = 0; gBuf[i] = 0.0; }
     }
 
