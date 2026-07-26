@@ -20,7 +20,7 @@
 -->
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
     <iq:application
-        entry="RunnavDataField"
+        entry="RunnavApp"
         id="311663a02204a6637ea04e47577906f1"
         launcherIcon="@Drawables.LauncherIcon"
         minApiLevel="4.0.0"
