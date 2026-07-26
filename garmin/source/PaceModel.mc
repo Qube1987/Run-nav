@@ -13,13 +13,15 @@
 //
 // ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
 
+using Toybox.Lang;
+
 class PaceModel {
-    public static const WINDOW_SEC = 1200;    // moyenne glissante 20 min (§5.2)
-    public static const VAM_MIN = 200;        // m/h — bornes de sécurité
-    public static const VAM_MAX = 900;
-    public static const CLIMB_GRADE = 3.0;    // % — sous ce seuil, pas de mesure
-    public static const MOVING_SPEED = 0.3;   // m/s — sous ce seuil, à l'arrêt
-    public static const SLOTS = 64;           // tampon circulaire : taille FIXE, zéro alloc
+    const WINDOW_SEC = 1200;    // moyenne glissante 20 min (§5.2)
+    const VAM_MIN = 200;        // m/h — bornes de sécurité
+    const VAM_MAX = 900;
+    const CLIMB_GRADE = 3.0;    // % — sous ce seuil, pas de mesure
+    const MOVING_SPEED = 0.3;   // m/s — sous ce seuil, à l'arrêt
+    const SLOTS = 64;           // tampon circulaire : taille FIXE, zéro alloc
 
     private var tBuf as Lang.Array<Lang.Number>;
     private var gBuf as Lang.Array<Lang.Float>;

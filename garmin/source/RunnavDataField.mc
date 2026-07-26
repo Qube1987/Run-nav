@@ -6,6 +6,7 @@
 //
 // ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
 
+using Toybox.Lang;
 using Toybox.WatchUi;
 using Toybox.Graphics;
 using Toybox.Application;
@@ -24,7 +25,7 @@ class RunnavDataField extends WatchUi.DataField {
 
     // projection plane (reprise du pack pour convertir lat/lon → mètres)
     private var cosLat as Lang.Float = 1.0;
-    private const RAD = Math.PI / 180.0;
+    private const RAD = 0.01745329251994330;   // PI/180 (litteral : un const doit etre calculable a la compilation)
     private const R = 6371000.0;
 
     private var lastDistance as Lang.Float = 0.0;   // elapsedDistance du tick précédent

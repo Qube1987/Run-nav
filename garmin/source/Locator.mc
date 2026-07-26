@@ -27,19 +27,20 @@
 //
 // ⚠ NON COMPILÉ : écrit sans accès au SDK. À vérifier au compilateur/simulateur.
 
+using Toybox.Lang;
 using Toybox.Math;
 
 class Locator {
     // Réglages (unités : mètres, secondes)
-    public static const WINDOW = 40;          // segments explorés de part et d'autre
-    public static const MAX_SPEED = 200;      // m/s — au-delà : saut GPS rejeté
-    public static const MAX_REJECTS = 5;      // rejets consécutifs avant ré-acquisition
-    public static const FREE_BAND = 30;       // m — déplacement plausible non pénalisé
-    public static const PLAUSIBLE_SPEED = 25; // m/s — élargit la bande si dt > 1 s
-    public static const CONTINUITY_K = 3;     // m d'abscisse « coûtant » 1 m de latéral
-    public static const CONTINUITY_CAP = 50;  // m — plafond du biais de continuité
-    public static const MIN_MOVE = 8;         // m — déplacement minimal pour fier au cap
-    public static const DIR_W = 40;           // poids du désaccord de cap
+    const WINDOW = 40;          // segments explorés de part et d'autre
+    const MAX_SPEED = 200;      // m/s — au-delà : saut GPS rejeté
+    const MAX_REJECTS = 5;      // rejets consécutifs avant ré-acquisition
+    const FREE_BAND = 30;       // m — déplacement plausible non pénalisé
+    const PLAUSIBLE_SPEED = 25; // m/s — élargit la bande si dt > 1 s
+    const CONTINUITY_K = 3;     // m d'abscisse « coûtant » 1 m de latéral
+    const CONTINUITY_CAP = 50;  // m — plafond du biais de continuité
+    const MIN_MOVE = 8;         // m — déplacement minimal pour fier au cap
+    const DIR_W = 40;           // poids du désaccord de cap
 
     private var pack as CoursePack;
     public var s as Lang.Float = 0.0;         // abscisse curviligne (m)

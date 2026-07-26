@@ -15,6 +15,7 @@
 //
 // ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
 
+using Toybox.Lang;
 using Toybox.Graphics;
 using Toybox.Math;
 using Toybox.System;
@@ -23,12 +24,12 @@ using Toybox.Time.Gregorian;
 
 class MapRenderer {
 
-    public static const PALIERS = [200, 400, 800, 1500, 3000];  // demi-fenêtre (m)
-    public static const HORIZON_SEC = 240;
-    public static const LOOKAHEAD_MIN = 250;
-    public static const LOOKAHEAD_MAX = 2500;
-    public static const FILL = 0.80;
-    public static const DWELL = 5;          // ticks de confirmation (hystérésis)
+    const PALIERS = [200, 400, 800, 1500, 3000];  // demi-fenêtre (m)
+    const HORIZON_SEC = 240;
+    const LOOKAHEAD_MIN = 250;
+    const LOOKAHEAD_MAX = 2500;
+    const FILL = 0.80;
+    const DWELL = 5;          // ticks de confirmation (hystérésis)
 
     private var pack as CoursePack;
     private var level as Lang.Number = 2;   // palier courant

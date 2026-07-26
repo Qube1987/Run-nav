@@ -11,6 +11,7 @@
 //
 // ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
 
+using Toybox.Lang;
 using Toybox.Graphics;
 using Toybox.System;
 using Toybox.Time;

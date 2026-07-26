@@ -17,6 +17,7 @@
 //   et au simulateur avant toute confiance. La LOGIQUE, elle, est validée :
 //   voir tools/ (implémentation de référence rejouée sur trace réelle).
 
+using Toybox.Lang;
 using Toybox.Application;
 using Toybox.Math;
 
