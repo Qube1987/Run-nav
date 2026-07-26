@@ -27,7 +27,7 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 | jalon | état |
 |---|---|
 | 1 — squelette, manifest, `docs/device-constraints.md` | ✅ cible `fenix847mm` câblée, contraintes relevées (128 Ko data field, 454x454 AMOLED) |
-| 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
+| 2 — exporteur course pack | ✅ **fait**, dans `tools/coursepack.js` (Node) |
 | 3 — `CoursePack` + `Locator` | 🟢 **algorithme validé** et **compile** ; exécution à valider au simulateur |
 | 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟢 **modèle VAM/ETA validé** et **compile** ; rendu à voir au simulateur |
 | 5 — `MapRenderer` (zone A) | 🟢 **auto-zoom validé** et **compile** ; rendu à voir au simulateur |
@@ -103,6 +103,22 @@ et *mesurer* (échelle `dd`), on obtient **1 170 points, 18,4 Ko, 0,000 % d'éca
 
 Détail complet : `run-nav/docs/coursepack.md`.
 
+## Régénérer un course pack
+
+L'export depuis l'application téléphone a été retiré : l'exporteur vit désormais
+ici et s'exécute en Node. Il réutilise le pipeline GPX de run-nav
+(`../../js/gpx.js`, `../../js/climbs.js`) :
+
+```js
+import { buildTrack } from '../../js/gpx.js';
+import { detectClimbs } from '../../js/climbs.js';
+import { buildCoursePack } from './coursepack.js';
+
+const track = buildTrack(points);          // points : [{lat, lon, ele}]
+const { pack, report } = buildCoursePack({ name, track, climbs: detectClimbs(track.points) });
+// report.driftPct doit rester < 0,5 % ; écrire `pack` dans resources/json/coursepack.json
+```
+
 ## Structure
 
 ```
@@ -111,7 +127,8 @@ source/          un fichier par classe (Monkey C)
   Locator.mc     projection GPS → abscisse curviligne
 resources/       chaînes, réglages
 docs/            décisions d'architecture, contraintes device
-tools/           implémentation de référence + tests rejouables (Node, sans SDK)
+tools/           exporteur course pack + implémentations de référence et tests
+                 rejouables (Node, sans SDK)
   fixtures/      trace et pack réels servant de banc d'essai
 ```
 

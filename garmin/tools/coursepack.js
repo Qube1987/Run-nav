@@ -2,12 +2,12 @@
 //
 // Produit un JSON compact (entiers uniquement) embarquant la trace, le profil,
 // les côtes et les points d'intérêt, destiné à être compilé dans le data field
-// ou servi par le backend. Voir docs/coursepack.md pour le format et les
+// ou servi par le backend. Voir ../docs/coursepack.md pour le format et les
 // décisions d'architecture (espace d'abscisses, budgets de points).
 //
 // Module PUR : aucune dépendance au DOM, pour être testable hors navigateur.
 
-import { haversine } from './geo.js';
+import { haversine } from '../../js/geo.js';
 
 export const PACK_VERSION = 2;
 
@@ -126,7 +126,7 @@ export function buildCoursePack({ name, track, climbs, waypoints, startMs, optio
   // Douglas-Peucker préserve la FORME mais raccourcit systématiquement la
   // LONGUEUR (il coupe les lacets) : sur un trail technique, ~3 % à 10 m de
   // tolérance. Impossible de descendre sous 0,5 % en resserrant la tolérance
-  // sans exploser le budget de points (cf. docs/coursepack.md).
+  // sans exploser le budget de points (cf. ../docs/coursepack.md).
   //
   // On sépare donc les deux rôles de la polyline :
   //   - DESSIN  : les sommets simplifiés suffisent (erreur de forme ~10 m) ;

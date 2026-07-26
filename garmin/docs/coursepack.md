@@ -1,8 +1,8 @@
 # Course pack — format et décisions d'architecture
 
 Le *course pack* est le JSON compact produit par `run-nav` et consommé par le data
-field Garmin `runnav-df`. Généré par `js/coursepack.js` (module pur, sans DOM),
-exporté depuis l'onglet réglages : **⌚ Exporter pour la montre**.
+field Garmin `runnav-df`. Généré par `tools/coursepack.js` (module pur, sans DOM),
+exécuté en Node (voir `tools/`) : l’export depuis l’application téléphone a été retiré.
 
 ## Format (v1)
 
