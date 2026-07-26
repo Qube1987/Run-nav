@@ -4,7 +4,7 @@
 // (estimations) → MapRenderer (zone A, 2/3 haut) + ClimbRenderer (zone B, 1/3 bas).
 // Garantit le mode dégradé (§6.4) : jamais d'écran vide, jamais de crash.
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
+// Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
 
 using Toybox.Lang;
 using Toybox.WatchUi;

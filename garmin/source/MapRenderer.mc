@@ -13,7 +13,7 @@
 //   - hystérésis par temps de séjour : divise le pompage par 15
 //     (785 → 52 changements sur 108 km, soit un tous les ~2 km).
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
+// Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
 
 using Toybox.Lang;
 using Toybox.Graphics;

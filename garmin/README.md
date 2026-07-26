@@ -28,9 +28,9 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 |---|---|
 | 1 — squelette, manifest, `docs/device-constraints.md` | ✅ cible `fenix847mm` câblée, contraintes relevées (128 Ko data field, 454x454 AMOLED) |
 | 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
-| 3 — `CoursePack` + `Locator` | 🟡 **algorithme validé**, code Monkey C **non compilé** |
-| 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟡 **modèle VAM/ETA validé**, rendu **non compilé** |
-| 5 — `MapRenderer` (zone A) | 🟡 **auto-zoom validé**, rendu **non compilé** |
+| 3 — `CoursePack` + `Locator` | 🟢 **algorithme validé** et **compile** ; exécution à valider au simulateur |
+| 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟢 **modèle VAM/ETA validé** et **compile** ; rendu à voir au simulateur |
+| 5 — `MapRenderer` (zone A) | 🟢 **auto-zoom validé** et **compile** ; rendu à voir au simulateur |
 | 6 — optimisation mémoire / batterie | ⬜ à faire |
 | 7 — chargement distant | ⬜ à faire |
 
@@ -76,11 +76,12 @@ cd tools
 node locator-test.mjs && node pacemodel-test.mjs && node zoom-test.mjs   # sans SDK
 ```
 
-**Non vérifié** — tout le Monkey C (`source/*.mc`) a été écrit **sans accès au
-SDK** : jamais compilé, jamais passé au simulateur. Le fichier `Locator.mc` est
-une transliteration ligne à ligne de la référence validée, mais la syntaxe, les
-types et les appels d'API sont à confronter au compilateur. Ne pas lui faire
-confiance avant ça.
+**Compile** — `monkeyc` (SDK 9.2.0, cible `fenix847mm`) produit le `.prg` sans
+erreur ni avertissement.
+
+**Non vérifié** — le comportement à l'exécution. Rien n'a encore tourné au
+simulateur : rendu, cadence de `compute()`, et surtout le **pic mémoire au
+chargement** (budget data field : 128 Ko) restent à mesurer.
 
 ## Le point d'architecture à ne pas casser
 

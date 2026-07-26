@@ -9,7 +9,7 @@
 // Règles d'affichage (§5.3) : rien de critique dans les 12 % extérieurs, fort
 // contraste (pas de gris moyen sur noir), chiffres clés en FONT_NUMBER_MEDIUM.
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
+// Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
 
 using Toybox.Lang;
 using Toybox.Graphics;

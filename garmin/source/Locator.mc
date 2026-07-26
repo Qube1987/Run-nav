@@ -25,7 +25,7 @@
 //     information spatiale ne peut trancher. Les deux brins sont à 180° l'un de
 //     l'autre → le cap lève l'ambiguïté (350 m → 100 m d'erreur maximale).
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK. À vérifier au compilateur/simulateur.
+// Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
 
 using Toybox.Lang;
 using Toybox.Math;

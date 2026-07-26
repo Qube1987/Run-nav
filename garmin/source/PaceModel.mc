@@ -11,7 +11,7 @@
 //
 // Pas de modèle de fatigue : c'est le rôle de run-nav en amont (§11).
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ.
+// Compile avec le SDK 9.2.0 pour fenix847mm ; comportement à valider au simulateur.
 
 using Toybox.Lang;
 

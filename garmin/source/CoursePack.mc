@@ -13,9 +13,9 @@
 // Si le pic dépasse malgré tout, baisser trackMaxPoints dans l'exporteur : la
 // clé "dd" garantit que les DISTANCES restent exactes, seul le tracé se dégrade.
 //
-// ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ. À passer au compilateur
-//   et au simulateur avant toute confiance. La LOGIQUE, elle, est validée :
-//   voir tools/ (implémentation de référence rejouée sur trace réelle).
+// Compile avec le SDK 9.2.0 pour fenix847mm. Comportement à l'exécution
+// encore à valider au simulateur. La LOGIQUE est validée à part : voir tools/
+// (implémentation de référence rejouée sur trace réelle).
 
 using Toybox.Lang;
 using Toybox.Application;
@@ -103,40 +103,54 @@ class CoursePack {
         return true;
     }
 
-    private function loadProfile(p) as Void {
-        if (!(p instanceof Lang.Array)) { return; }   // profil absent : tableaux vides
+    // Les trois chargeurs ci-dessous lisent du JSON BRUT : le compilateur ne
+    // connaît pas le type de ce qui en sort. On caste donc explicitement à
+    // chaque étape, sinon chaque écriture dans un tableau typé déclenche un
+    // « Cannot determine if container access is using container type ».
+    private function loadProfile(raw) as Void {
+        if (!(raw instanceof Lang.Array)) { return; }   // profil absent : tableaux vides
+        var p = raw as Lang.Array;
         var m = p.size();
         profD = new [m] as Lang.Array<Lang.Number>;
         profE = new [m] as Lang.Array<Lang.Number>;
         for (var i = 0; i < m; i += 1) {
-            profD[i] = p[i][0];
-            profE[i] = p[i][1];
+            var row = p[i] as Lang.Array;
+            profD[i] = row[0] as Lang.Number;
+            profE[i] = row[1] as Lang.Number;
         }
     }
 
-    private function loadClimbs(c) as Void {
-        if (!(c instanceof Lang.Array)) { return; }
+    private function loadClimbs(raw) as Void {
+        if (!(raw instanceof Lang.Array)) { return; }
+        var c = raw as Lang.Array;
         var m = c.size();
-        climbS = new [m] as Lang.Array<Lang.Number>; climbE = new [m] as Lang.Array<Lang.Number>; climbG = new [m] as Lang.Array<Lang.Number>;
-        climbP = new [m] as Lang.Array<Lang.Number>; climbN = new [m] as Lang.Array<Lang.String>;
+        climbS = new [m] as Lang.Array<Lang.Number>;
+        climbE = new [m] as Lang.Array<Lang.Number>;
+        climbG = new [m] as Lang.Array<Lang.Number>;
+        climbP = new [m] as Lang.Array<Lang.Number>;
+        climbN = new [m] as Lang.Array<Lang.String>;
         for (var i = 0; i < m; i += 1) {
-            var e = c[i];
-            climbS[i] = e["s"]; climbE[i] = e["e"];
-            climbG[i] = (e["g"] != null) ? e["g"] : 0;
-            climbP[i] = (e["pc"] != null) ? e["pc"] : 0;
-            climbN[i] = (e["n"] != null) ? e["n"] : "";
+            var e = c[i] as Lang.Dictionary;
+            climbS[i] = e["s"] as Lang.Number;
+            climbE[i] = e["e"] as Lang.Number;
+            climbG[i] = (e["g"] != null) ? e["g"] as Lang.Number : 0;
+            climbP[i] = (e["pc"] != null) ? e["pc"] as Lang.Number : 0;
+            climbN[i] = (e["n"] != null) ? e["n"] as Lang.String : "";
         }
     }
 
-    private function loadPois(v) as Void {
-        if (!(v instanceof Lang.Array)) { return; }
+    private function loadPois(raw) as Void {
+        if (!(raw instanceof Lang.Array)) { return; }
+        var v = raw as Lang.Array;
         var m = v.size();
-        poiD = new [m] as Lang.Array<Lang.Number>; poiK = new [m] as Lang.Array<Lang.String>; poiN = new [m] as Lang.Array<Lang.String>;
+        poiD = new [m] as Lang.Array<Lang.Number>;
+        poiK = new [m] as Lang.Array<Lang.String>;
+        poiN = new [m] as Lang.Array<Lang.String>;
         for (var i = 0; i < m; i += 1) {
-            var e = v[i];
-            poiD[i] = e["d"];
-            poiK[i] = (e["k"] != null) ? e["k"] : "poi";
-            poiN[i] = (e["n"] != null) ? e["n"] : "";
+            var e = v[i] as Lang.Dictionary;
+            poiD[i] = e["d"] as Lang.Number;
+            poiK[i] = (e["k"] != null) ? e["k"] as Lang.String : "poi";
+            poiN[i] = (e["n"] != null) ? e["n"] as Lang.String : "";
         }
     }
 
