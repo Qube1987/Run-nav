@@ -5,6 +5,12 @@
 #   .\build.ps1 fit a.fit    compile, lance le simulateur et rejoue une activité
 #
 # La clé développeur est générée au premier appel si elle est absente.
+#
+# Si Windows refuse d'exécuter le script (« l'exécution de scripts est
+# désactivée sur ce système »), lance-le ainsi — ça ne change aucun réglage
+# global de la machine :
+#
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 param([string]$Action = "", [string]$FitFile = "")
 
@@ -35,21 +41,41 @@ Write-Host "SDK : $env:CIQ_HOME"
 # Elle signe le .prg. Gratuite, générée localement, à ne jamais committer.
 if (-not (Test-Path $Key)) {
     Write-Host "Génération de la clé développeur…"
-    $openssl = (Get-Command openssl -ErrorAction SilentlyContinue)
-    if (-not $openssl) {
-        # Git pour Windows en embarque une copie
-        $guess = "C:\Program Files\Git\usr\bin\openssl.exe"
-        if (Test-Path $guess) { $openssl = $guess } else { $openssl = $null }
+    $done = $false
+
+    # 1) .NET seul — aucune dépendance externe. ExportPkcs8PrivateKey existe sur
+    #    PowerShell 7 (.NET 5+) mais pas sur Windows PowerShell 5.1 (.NET 4.x),
+    #    d'où le repli openssl juste après.
+    try {
+        $rsa = [System.Security.Cryptography.RSA]::Create(4096)
+        [System.IO.File]::WriteAllBytes((Join-Path $PWD $Key), $rsa.ExportPkcs8PrivateKey())
+        $done = $true
+        Write-Host "  -> $Key (via .NET)"
+    } catch {
+        $done = $false
     }
-    if ($openssl) {
-        $exe = if ($openssl -is [string]) { $openssl } else { $openssl.Source }
-        & $exe genrsa -out developer_key.pem 4096 2>$null
-        & $exe pkcs8 -topk8 -inform PEM -outform DER -in developer_key.pem -out $Key -nocrypt 2>$null
-        Write-Host "  -> $Key"
-    } else {
-        Write-Host "openssl introuvable." -ForegroundColor Yellow
-        Write-Host "Genere la cle depuis VS Code : Ctrl+Shift+P > 'Monkey C: Generate a Developer Key'"
-        Write-Host "puis place-la ici sous le nom $Key."
+
+    # 2) repli openssl (fourni par Git pour Windows)
+    if (-not $done) {
+        $exe = $null
+        $cmd = Get-Command openssl -ErrorAction SilentlyContinue
+        if ($cmd) { $exe = $cmd.Source }
+        elseif (Test-Path "C:\Program Files\Git\usr\bin\openssl.exe") {
+            $exe = "C:\Program Files\Git\usr\bin\openssl.exe"
+        }
+        if ($exe) {
+            & $exe genrsa -out developer_key.pem 4096 2>$null
+            & $exe pkcs8 -topk8 -inform PEM -outform DER -in developer_key.pem -out $Key -nocrypt 2>$null
+            $done = Test-Path $Key
+            if ($done) { Write-Host "  -> $Key (via openssl)" }
+        }
+    }
+
+    # 3) dernier recours : l'extension VS Code sait la générer
+    if (-not $done) {
+        Write-Host "Impossible de generer la cle automatiquement." -ForegroundColor Yellow
+        Write-Host "Dans VS Code : Ctrl+Shift+P > 'Monkey C: Generate a Developer Key'"
+        Write-Host "puis place le fichier .der ici sous le nom $Key."
         exit 1
     }
 }
