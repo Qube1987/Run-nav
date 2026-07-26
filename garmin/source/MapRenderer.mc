@@ -98,6 +98,10 @@ class MapRenderer {
         var cx = w / 2;
         var cy = bottom / 2;
 
+        // La trace doit rester DANS la zone A : sans découpe, elle déborde sur
+        // la zone B et se mêle au texte de la côte (constaté au simulateur).
+        dc.setClip(0, 0, w, bottom);
+
         var xs = pack.xs;
         var ys = pack.ys;
         var cum = pack.cum;
@@ -154,7 +158,7 @@ class MapRenderer {
         dc.setPenWidth(1);
 
         // --- POI dans la fenêtre ---
-        if (showPoi && pack.poiD != null) {
+        if (showPoi && pack.poiD.size() > 0) {
             dc.setColor(Graphics.COLOR_BLUE, Graphics.COLOR_TRANSPARENT);
             for (var i = 0; i < pack.poiD.size(); i += 1) {
                 var pd = pack.poiD[i];
@@ -182,6 +186,28 @@ class MapRenderer {
 
         // --- overlays : distance restante (HG) et heure (HD) ---
         drawOverlays(dc, w, loc);
+
+        dc.clearClip();
+    }
+
+    /**
+     * Retrait horizontal imposé par un écran ROND, pour un texte occupant la
+     * bande verticale [y, y+textH] : distance entre le bord de la dalle et le
+     * bord réel du cercle à cette hauteur. Sans ça, tout retrait exprimé en
+     * pourcentage de la largeur est faux dès qu'on s'éloigne du centre.
+     */
+    static function chordInset(w as Lang.Number, h as Lang.Number,
+                               y as Lang.Number, textH as Lang.Number) as Lang.Number {
+        var r = w / 2.0;
+        var cy = h / 2.0;
+        // on retient le bord du texte le plus éloigné du centre : le pire cas
+        var d1 = cy - y;
+        if (d1 < 0) { d1 = -d1; }
+        var d2 = cy - (y + textH);
+        if (d2 < 0) { d2 = -d2; }
+        var dy = (d1 > d2) ? d1 : d2;
+        if (dy >= r) { return (r).toNumber(); }
+        return (r - Math.sqrt(r * r - dy * dy)).toNumber();
     }
 
     /** Sommet le plus proche d'une abscisse (POI : précision au sommet suffit). */
@@ -222,9 +248,14 @@ class MapRenderer {
         txt = txt + " km";
         var clock = System.getClockTime();
         var hhmm = clock.hour.format("%02d") + ":" + clock.min.format("%02d");
-        var pad = (w * 12) / 100;
-        var y = (dc.getHeight() * 4) / 100;      // écran rond : on descend un peu
+        var h = dc.getHeight();
         var font = Graphics.FONT_TINY;
+        // Écran ROND : à 20 px du haut, la corde visible ne fait plus que ~220 px
+        // sur 454. Un retrait fixe de 12 % projetait donc le texte HORS du cercle
+        // (mesuré au simulateur : « 108 km » affiché « …8 km »). On calcule le
+        // retrait réel à cette hauteur, et on descend le bandeau là où c'est large.
+        var y = (h * 9) / 100;
+        var pad = chordInset(w, h, y, Graphics.getFontHeight(font)) + 6;
 
         // Pastilles MESURÉES sur le texte réel. Des tailles en dur ne survivent
         // pas au changement de police ou de device (454x454 ici, mais la

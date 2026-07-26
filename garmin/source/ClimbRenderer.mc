@@ -37,8 +37,10 @@ class ClimbRenderer {
         var w = dc.getWidth();
         var h = dc.getHeight();
         var zh = h - top;
-        // marge latérale : 12 % de la largeur, écran rond oblige (§5.3)
-        var pad = (w * 12) / 100;
+        // Écran rond : la zone B est SOUS le centre, la corde se resserre vers le
+        // bas. Un retrait fixe de 12 % laissait le texte sortir du cercle, d'où
+        // un calcul du retrait réel au tiers haut de la zone (§5.3).
+        var pad = MapRenderer.chordInset(w, h, top + zh / 3, zh / 3) + 6;
         var inner = w - 2 * pad;
 
         // séparateur zone A / zone B
@@ -126,14 +128,16 @@ class ClimbRenderer {
             return;
         }
 
+        // Une SEULE ligne centrée : en gauche/droite, « PROCHAINE COTE » et
+        // « dans 0.7 km » se télescopaient au milieu (constaté au simulateur).
         var away = (pack.climbS[ni] - s) / 1000.0;
-        dc.drawText(pad, y, Graphics.FONT_XTINY, "PROCHAINE COTE", Graphics.TEXT_JUSTIFY_LEFT);
-        dc.drawText(w - pad, y, Graphics.FONT_XTINY, "dans " + away.format("%.1f") + " km",
-                    Graphics.TEXT_JUSTIFY_RIGHT);
+        dc.drawText(cx, y, Graphics.FONT_XTINY,
+                    "COTE DANS " + away.format("%.1f") + " km",
+                    Graphics.TEXT_JUSTIFY_CENTER);
 
         y += zh / 4;
         var len = (pack.climbE[ni] - pack.climbS[ni]) / 1000.0;
-        var desc = pack.climbG[ni] + "m / " + len.format("%.1f") + "km / "
+        var desc = pack.climbG[ni] + "m  " + len.format("%.1f") + "km  "
                  + (pack.climbP[ni] / 10.0).format("%.1f") + "%";
         dc.drawText(cx, y, Graphics.FONT_XTINY, desc, Graphics.TEXT_JUSTIFY_CENTER);
 

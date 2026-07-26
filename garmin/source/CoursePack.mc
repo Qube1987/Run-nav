@@ -50,6 +50,8 @@ class CoursePack {
     public var poiD as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
     public var poiK as Lang.Array<Lang.String> = new [0] as Lang.Array<Lang.String>;
     public var poiN as Lang.Array<Lang.String> = new [0] as Lang.Array<Lang.String>;
+    // barrière horaire en minutes depuis le départ, -1 si le POI n'en a pas
+    public var poiCut as Lang.Array<Lang.Number> = new [0] as Lang.Array<Lang.Number>;
 
     function initialize() {}
 
@@ -96,62 +98,34 @@ class CoursePack {
             cum[k + 1] = cum[k] + dd[k];
         }
 
-        loadProfile(d["p"]);
-        loadClimbs(d["c"]);
-        loadPois(d["i"]);
+        // Pack v2 : profil, côtes et POI sont des TABLEAUX PLATS parallèles.
+        // On les référence directement au lieu de les recopier : cela évite de
+        // dupliquer chaque valeur, et `raw = null` chez l'appelant libère
+        // ensuite le dictionnaire et les tableaux non retenus (t, dd).
+        profD  = flatNum(d["pd"]);
+        profE  = flatNum(d["pe"]);
+        climbS = flatNum(d["cs"]);
+        climbE = flatNum(d["ce"]);
+        climbG = flatNum(d["cg"]);
+        climbP = flatNum(d["cp"]);
+        climbN = flatStr(d["cn"]);
+        poiD   = flatNum(d["od"]);
+        poiK   = flatStr(d["ok"]);
+        poiN   = flatStr(d["on"]);
+        poiCut = flatNum(d["oc"]);
         loaded = true;
         return true;
     }
 
-    // Les trois chargeurs ci-dessous lisent du JSON BRUT : le compilateur ne
-    // connaît pas le type de ce qui en sort. On caste donc explicitement à
-    // chaque étape, sinon chaque écriture dans un tableau typé déclenche un
-    // « Cannot determine if container access is using container type ».
-    private function loadProfile(raw) as Void {
-        if (!(raw instanceof Lang.Array)) { return; }   // profil absent : tableaux vides
-        var p = raw as Lang.Array;
-        var m = p.size();
-        profD = new [m] as Lang.Array<Lang.Number>;
-        profE = new [m] as Lang.Array<Lang.Number>;
-        for (var i = 0; i < m; i += 1) {
-            var row = p[i] as Lang.Array;
-            profD[i] = row[0] as Lang.Number;
-            profE[i] = row[1] as Lang.Number;
-        }
+    /** Tableau plat d'entiers issu du JSON, ou tableau vide si absent/invalide. */
+    private function flatNum(raw) as Lang.Array<Lang.Number> {
+        if (!(raw instanceof Lang.Array)) { return new [0] as Lang.Array<Lang.Number>; }
+        return raw as Lang.Array<Lang.Number>;
     }
-
-    private function loadClimbs(raw) as Void {
-        if (!(raw instanceof Lang.Array)) { return; }
-        var c = raw as Lang.Array;
-        var m = c.size();
-        climbS = new [m] as Lang.Array<Lang.Number>;
-        climbE = new [m] as Lang.Array<Lang.Number>;
-        climbG = new [m] as Lang.Array<Lang.Number>;
-        climbP = new [m] as Lang.Array<Lang.Number>;
-        climbN = new [m] as Lang.Array<Lang.String>;
-        for (var i = 0; i < m; i += 1) {
-            var e = c[i] as Lang.Dictionary;
-            climbS[i] = e["s"] as Lang.Number;
-            climbE[i] = e["e"] as Lang.Number;
-            climbG[i] = (e["g"] != null) ? e["g"] as Lang.Number : 0;
-            climbP[i] = (e["pc"] != null) ? e["pc"] as Lang.Number : 0;
-            climbN[i] = (e["n"] != null) ? e["n"] as Lang.String : "";
-        }
-    }
-
-    private function loadPois(raw) as Void {
-        if (!(raw instanceof Lang.Array)) { return; }
-        var v = raw as Lang.Array;
-        var m = v.size();
-        poiD = new [m] as Lang.Array<Lang.Number>;
-        poiK = new [m] as Lang.Array<Lang.String>;
-        poiN = new [m] as Lang.Array<Lang.String>;
-        for (var i = 0; i < m; i += 1) {
-            var e = v[i] as Lang.Dictionary;
-            poiD[i] = e["d"] as Lang.Number;
-            poiK[i] = (e["k"] != null) ? e["k"] as Lang.String : "poi";
-            poiN[i] = (e["n"] != null) ? e["n"] as Lang.String : "";
-        }
+    /** Idem pour les chaînes. */
+    private function flatStr(raw) as Lang.Array<Lang.String> {
+        if (!(raw instanceof Lang.Array)) { return new [0] as Lang.Array<Lang.String>; }
+        return raw as Lang.Array<Lang.String>;
     }
 
     // --- accès ---

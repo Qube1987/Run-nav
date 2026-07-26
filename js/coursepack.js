@@ -9,7 +9,7 @@
 
 import { haversine } from './geo.js';
 
-export const PACK_VERSION = 1;
+export const PACK_VERSION = 2;
 
 // Budgets par défaut (cf. cahier des charges §4.1). La tolérance est un point de
 // départ : elle est relâchée automatiquement si le budget de points est dépassé.
@@ -170,45 +170,53 @@ export function buildCoursePack({ name, track, climbs, waypoints, startMs, optio
     return Math.abs(pe[i] - (pe[a] + tt * (pe[b] - pe[a])));
   };
   const prof = simplifyToBudget(n, vertDist, opt.profileTol, opt.profileMaxPoints);
-  const p = prof.idx.map((i) => [Math.round(pts[i].d), Math.round(pts[i].ele)]);
+  // Profil en DEUX TABLEAUX PLATS et non en couples [d, e]. Mesuré au profiler
+  // du simulateur : 436 sous-tableaux = 436 objets Monkey C, chacun avec son
+  // surcoût — c'est le principal responsable du pic mémoire au chargement
+  // (95,9 Ko sur 124,5 disponibles, soit 77 %, au-dessus de la cible de 70 %).
+  const profDist = [], profEle = [];
+  for (const i of prof.idx) { profDist.push(Math.round(pts[i].d)); profEle.push(Math.round(pts[i].ele)); }
 
-  // --- 5) côtes ---
-  const c = (climbs || []).map((cl) => {
-    const row = {
-      s: Math.round(cl.startD),
-      e: Math.round(cl.endD),
-      g: Math.round(cl.gain),
-      pc: Math.round((cl.avgGrade || 0) * 10),   // ‰
-      n: (cl.name || '').trim(),
-    };
-    if (!row.n) delete row.n;                     // nom absent → la montre affiche l'index
-    return row;
-  });
+  // --- 5) côtes (tableaux parallèles : un dictionnaire par côte coûterait un
+  //     objet chacun, pour rien) ---
+  const cs = [], ce = [], cg = [], cp = [], cn = [];
+  for (const cl of (climbs || [])) {
+    cs.push(Math.round(cl.startD));
+    ce.push(Math.round(cl.endD));
+    cg.push(Math.round(cl.gain));
+    cp.push(Math.round((cl.avgGrade || 0) * 10));   // ‰
+    cn.push((cl.name || '').trim());
+  }
 
   // --- 6) points d'intérêt ---
   // Les sommets auto sont déjà décrits par `c` : on ne garde que les repères
   // porteurs d'info (nommés à la main, avec pictogramme ou barrière horaire).
-  const i2 = [];
+  const poi = [];
   for (const w of (waypoints || [])) {
     if (w.d == null) continue;
     const icons = Array.isArray(w.icons) ? w.icons : (w.icon ? [w.icon] : []);
     const meaningful = !w.auto || !!w.cutoff || icons.length > 0;
     if (!meaningful || w.summit) continue;
-    const row = { d: Math.round(w.d), k: poiKind(icons, w) };
-    const nm = (w.label || '').trim();
-    if (nm) row.n = nm;
     const cutMin = cutoffMinutes(w.cutoff, startMs);
-    if (cutMin != null) row.cut = cutMin;
-    i2.push(row);
+    poi.push({
+      d: Math.round(w.d), k: poiKind(icons, w),
+      n: (w.label || '').trim(), c: (cutMin == null ? -1 : cutMin),
+    });
   }
-  i2.sort((a, b) => a.d - b.d);
+  poi.sort((a, b) => a.d - b.d);
+  // là encore, tableaux parallèles plutôt qu'un dictionnaire par POI
+  const od = [], ok2 = [], on = [], oc = [];
+  for (const q of poi) { od.push(q.d); ok2.push(q.k); on.push(q.n); oc.push(q.c); }
 
   const pack = {
     v: PACK_VERSION,
     n: (name || track.name || 'Course').trim(),
     d: Math.round(trueTotal),
     a: Math.round(track.gain || 0),
-    o, t, dd, p, c, i: i2,
+    o, t, dd,
+    pd: profDist, pe: profEle,      // profil : deux tableaux plats
+    cs, ce, cg, cp, cn,             // côtes : tableaux parallèles
+    od, ok: ok2, on, oc,            // POI : idem (oc = -1 si pas de barrière)
   };
 
   // --- 7) contrôle de cohérence ---
@@ -226,16 +234,16 @@ export function buildCoursePack({ name, track, climbs, waypoints, startMs, optio
     sizeWarn: bytes > SIZE_WARN_BYTES,
     trackPoints: idx.length,
     trackTol: +simp.tol.toFixed(2),
-    profilePoints: p.length,
+    profilePoints: profDist.length,
     profileTol: +prof.tol.toFixed(2),
-    climbs: c.length,
-    pois: i2.length,
+    climbs: cs.length,
+    pois: od.length,
     originalDistance: Math.round(track.total),
     packDistance,
     driftPct: +(drift * 100).toFixed(3),
     driftOk: drift < 0.005,                       // < 0,5 % (critère jalon 2)
     chordDriftPct: +(chordDrift * 100).toFixed(3), // écart de forme (dessin only)
-    budgetOk: idx.length <= opt.trackMaxPoints && p.length <= opt.profileMaxPoints,
+    budgetOk: idx.length <= opt.trackMaxPoints && profDist.length <= opt.profileMaxPoints,
   };
   return { pack, report };
 }
