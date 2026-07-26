@@ -26,7 +26,7 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 
 | jalon | état |
 |---|---|
-| 1 — squelette, manifest, `docs/device-constraints.md` | 🟡 cible `fenix847mm` câblée (SDK 9.2.0, API 6.0) ; **budget mémoire à relever** |
+| 1 — squelette, manifest, `docs/device-constraints.md` | ✅ cible `fenix847mm` câblée, contraintes relevées (128 Ko data field, 454x454 AMOLED) |
 | 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
 | 3 — `CoursePack` + `Locator` | 🟡 **algorithme validé**, code Monkey C **non compilé** |
 | 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟡 **modèle VAM/ETA validé**, rendu **non compilé** |
@@ -112,10 +112,13 @@ tools/           implémentation de référence + tests rejouables (Node, sans S
 ## Compiler
 
 ```bash
-export CIQ_HOME="$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.2.0"
-./build.sh          # compile pour fenix847mm
-./build.sh sim      # + simulateur
-./build.sh fit activite.fit   # + rejeu d'une activité
+# Windows (PowerShell)
+.\build.ps1                    # compile pour fenix847mm
+.\build.ps1 sim                # + simulateur
+.\build.ps1 fit activite.fit   # + rejeu d'une activité
+
+# macOS / Linux
+./build.sh   [sim|fit a.fit]
 ```
 
 La clé développeur est générée au premier appel (et ignorée par git).

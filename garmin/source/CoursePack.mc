@@ -3,6 +3,16 @@
 // Format et décisions : voir docs/coursepack-format.md (copie du contrat) et,
 // côté producteur, run-nav/docs/coursepack.md.
 //
+// MÉMOIRE — budget data field du fenix847mm : 131 072 octets (128 Ko).
+// Le régime établi est modeste : pour RT 2026 (1 170 sommets), xs/ys en Float et
+// cum en Number pèsent ~14 Ko. Le point sensible est le PIC AU CHARGEMENT, où le
+// dictionnaire JSON décodé coexiste avec les tableaux typés — un dictionnaire
+// Monkey C coûte bien plus que les 18,4 Ko du texte source. D'où : on recopie
+// tout dans des tableaux typés, puis l'appelant relâche le dictionnaire
+// immédiatement (voir RunnavDataField.initialize).
+// Si le pic dépasse malgré tout, baisser trackMaxPoints dans l'exporteur : la
+// clé "dd" garantit que les DISTANCES restent exactes, seul le tracé se dégrade.
+//
 // ⚠ NON COMPILÉ : écrit sans accès au SDK Connect IQ. À passer au compilateur
 //   et au simulateur avant toute confiance. La LOGIQUE, elle, est validée :
 //   voir tools/ (implémentation de référence rejouée sur trace réelle).
@@ -16,6 +26,9 @@ class CoursePack {
     public var total as Lang.Number = 0;        // distance totale VRAIE (m)
     public var ascent as Lang.Number = 0;       // D+ total (m)
     public var loaded as Lang.Boolean = false;
+    // Facteur de projection conservé ici pour que l'appelant puisse RELÂCHER le
+    // dictionnaire JSON dès la fin de load() (cf. note mémoire ci-dessus).
+    public var cosLat as Lang.Float = 1.0;
 
     // --- polyline projetée en mètres (plan local équirectangulaire) ---
     public var n as Lang.Number = 0;
@@ -68,7 +81,7 @@ class CoursePack {
         var RAD = Math.PI / 180.0;
         var R = 6371000.0;
         var lat0 = (o[0] / 100000.0) * RAD;
-        var cosLat = Math.cos(lat0);
+        cosLat = Math.cos(lat0).toFloat();
         var la = o[0];
         var lo = o[1];
         xs[0] = ((lo / 100000.0) * RAD * cosLat * R).toFloat();

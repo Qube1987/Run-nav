@@ -222,13 +222,22 @@ class MapRenderer {
         var clock = System.getClockTime();
         var hhmm = clock.hour.format("%02d") + ":" + clock.min.format("%02d");
         var pad = (w * 12) / 100;
-        var y = 6;
+        var y = (dc.getHeight() * 4) / 100;      // écran rond : on descend un peu
+        var font = Graphics.FONT_TINY;
+
+        // Pastilles MESURÉES sur le texte réel. Des tailles en dur ne survivent
+        // pas au changement de police ou de device (454x454 ici, mais la
+        // largeur d'un « 108.3 km » dépend aussi de la locale).
+        var fh = Graphics.getFontHeight(font);
+        var wL = dc.getTextWidthInPixels(txt, font);
+        var wR = dc.getTextWidthInPixels(hhmm, font);
+        var m = 4;
 
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
-        dc.fillRectangle(pad - 3, y - 2, 74, 20);
-        dc.fillRectangle(w - pad - 47, y - 2, 50, 20);
+        dc.fillRectangle(pad - m, y - m / 2, wL + 2 * m, fh + m);
+        dc.fillRectangle(w - pad - wR - m, y - m / 2, wR + 2 * m, fh + m);
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(pad, y, Graphics.FONT_TINY, txt, Graphics.TEXT_JUSTIFY_LEFT);
-        dc.drawText(w - pad, y, Graphics.FONT_TINY, hhmm, Graphics.TEXT_JUSTIFY_RIGHT);
+        dc.drawText(pad, y, font, txt, Graphics.TEXT_JUSTIFY_LEFT);
+        dc.drawText(w - pad, y, font, hhmm, Graphics.TEXT_JUSTIFY_RIGHT);
     }
 }

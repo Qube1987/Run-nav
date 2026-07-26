@@ -37,9 +37,14 @@ class RunnavDataField extends WatchUi.DataField {
         // Le chargement ne doit jamais faire échouer le démarrage (§6.4).
         try {
             var raw = Application.loadResource(Rez.JsonData.CoursePackData);
-            if (pack.load(raw)) {
+            var ok = pack.load(raw);
+            // Le dictionnaire décodé est le plus gros objet du démarrage : on le
+            // relâche AVANT d'allouer autre chose, pour écrêter le pic mémoire
+            // (budget data field : 128 Ko).
+            raw = null;
+            if (ok) {
                 locator = new Locator(pack);
-                cosLat = Math.cos((raw["o"][0] / 100000.0) * RAD).toFloat();
+                cosLat = pack.cosLat;
                 climbView = new ClimbRenderer(pack);
                 mapView = new MapRenderer(pack);
                 pace = new PaceModel(getSetting("initialVAM", 450));

@@ -20,8 +20,13 @@ export const DEFAULTS = {
   profileMaxPoints: 500,
 };
 
-// Seuil d'alerte sur la taille du pack. PROVISOIRE : à caler sur le budget
-// mémoire réel d'un data field Fenix 8, à relever depuis le SDK (§2.3).
+// Seuil d'alerte sur la taille du pack.
+// Budget mémoire d'un data field sur fenix847mm : 131 072 octets (128 Ko),
+// relevé dans compiler.json du SDK. On ne peut pas s'en approcher : au
+// chargement, le dictionnaire JSON DÉCODÉ coexiste avec les tableaux typés, et
+// sa représentation en mémoire vaut plusieurs fois le texte source. On garde
+// donc une marge large — à resserrer ou relâcher une fois le pic réel mesuré au
+// profiler du simulateur (§9 : rester sous 70 % du budget).
 export const SIZE_WARN_BYTES = 32 * 1024;
 
 // ---------------------------------------------------------------- Douglas-Peucker
