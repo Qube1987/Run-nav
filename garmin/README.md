@@ -29,8 +29,8 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 | 1 — squelette, manifest, `docs/device-constraints.md` | 🟡 squelette posé, **contraintes device non relevées** (pas de SDK) |
 | 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
 | 3 — `CoursePack` + `Locator` | 🟡 **algorithme validé**, code Monkey C **non compilé** |
-| 4 — `ClimbRenderer` (zone B) | ⬜ à faire |
-| 5 — `MapRenderer` (zone A) | ⬜ à faire |
+| 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟡 **modèle VAM/ETA validé**, rendu **non compilé** |
+| 5 — `MapRenderer` (zone A) | 🟡 **auto-zoom validé**, rendu **non compilé** |
 | 6 — optimisation mémoire / batterie | ⬜ à faire |
 | 7 — chargement distant | ⬜ à faire |
 
@@ -49,8 +49,31 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 
 soit **2 points au-dessus de 50 m sur 4 629 mises à jour**.
 
+**Vérifié** — le modèle de vitesse ascensionnelle (`tools/pacemodel-test.mjs`),
+sur la plus grosse côte de RT 2026 (1 594 m D+, 15,2 %) :
+
+| scénario | résultat |
+|---|---|
+| grimpeur lent (380 m/h) / rapide (750 m/h) | VAM retrouvée, ETA à 0,1 % / 2,7 % |
+| arrêt 15 min, timer en pause | ETA à 0,6 % |
+| arrêt 15 min **debout, timer qui tourne** | ETA à 0,6 % |
+| VAM absurde (1 800 m/h) | plafonnée à 900 |
+
+**Vérifié** — l'auto-zoom de la zone A (`tools/zoom-test.mjs`) : lookahead
+indexé sur la vitesse (~4 min devant), hystérésis par temps de séjour.
+
+| | résultat |
+|---|---|
+| pompage du zoom | **÷ 15** (785 → 52 changements sur 108 km) |
+| ultra-trail (1,5 m/s) | paliers 200/400/800 m, 1 changement / 2 km |
+| bikepacking (8 m/s) | paliers 800/1500/3000 m |
+
+Un lookahead **figé** dégénère (92 % du temps bloqué sur un seul palier) : c'est
+la mesure qui a imposé de l'indexer sur la vitesse.
+
 ```bash
-cd tools && node locator-test.mjs      # ne nécessite pas le SDK
+cd tools
+node locator-test.mjs && node pacemodel-test.mjs && node zoom-test.mjs   # sans SDK
 ```
 
 **Non vérifié** — tout le Monkey C (`source/*.mc`) a été écrit **sans accès au

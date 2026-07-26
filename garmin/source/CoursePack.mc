@@ -172,6 +172,17 @@ class CoursePack {
         return profE[lo] + ((profE[hi] - profE[lo]) * (s - profD[lo])) / span;
     }
 
+    /** Pente instantanée (%) lissée sur ±100 m — évite le clignotement (§5.2). */
+    function gradeAt(s as Lang.Number) as Lang.Float {
+        var a = s - 100;
+        var b = s + 100;
+        if (a < 0) { a = 0; }
+        if (b > total) { b = total; }
+        var run = b - a;
+        if (run <= 0) { return 0.0; }
+        return ((eleAt(b) - eleAt(a)).toFloat() / run) * 100.0;
+    }
+
     /** D+ restant jusqu'au sommet de la côte i. */
     function gainRemaining(i as Lang.Number, s as Lang.Number) as Lang.Number {
         if (climbS == null || i < 0 || i >= climbS.size()) { return 0; }

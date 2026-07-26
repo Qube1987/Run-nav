@@ -1,0 +1,8 @@
+<properties>
+  <property id="orientation" type="number">0</property>
+  <property id="zoomMode" type="number">-1</property>
+  <property id="offCourseThreshold" type="number">60</property>
+  <property id="initialVAM" type="number">450</property>
+  <property id="showPOI" type="boolean">true</property>
+  <property id="courseCode" type="string"></property>
+</properties>

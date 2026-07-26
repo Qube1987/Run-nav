@@ -1,0 +1,30 @@
+<settings>
+  <setting propertyKey="@Properties.orientation" title="Orientation">
+    <settingConfig type="list">
+      <listEntry value="0">Track-up</listEntry>
+      <listEntry value="1">North-up</listEntry>
+    </settingConfig>
+  </setting>
+  <setting propertyKey="@Properties.zoomMode" title="Zoom">
+    <settingConfig type="list">
+      <listEntry value="-1">Auto</listEntry>
+      <listEntry value="0">200 m</listEntry>
+      <listEntry value="1">400 m</listEntry>
+      <listEntry value="2">800 m</listEntry>
+      <listEntry value="3">1.5 km</listEntry>
+      <listEntry value="4">3 km</listEntry>
+    </settingConfig>
+  </setting>
+  <setting propertyKey="@Properties.offCourseThreshold" title="Seuil hors-trace (m)">
+    <settingConfig type="numeric" min="20" max="500"/>
+  </setting>
+  <setting propertyKey="@Properties.initialVAM" title="Vitesse ascensionnelle initiale (m/h)">
+    <settingConfig type="numeric" min="200" max="900"/>
+  </setting>
+  <setting propertyKey="@Properties.showPOI" title="Afficher les points d'interet">
+    <settingConfig type="boolean"/>
+  </setting>
+  <setting propertyKey="@Properties.courseCode" title="Code course (mode dynamique)">
+    <settingConfig type="alphaNumeric"/>
+  </setting>
+</settings>
