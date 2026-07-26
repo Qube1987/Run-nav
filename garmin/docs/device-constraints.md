@@ -22,29 +22,28 @@ sans travail supplémentaire. Les autres variantes (`fenix843mm`,
 `fenix8pro47mm`, `fenix8solar47mm/51mm`) sont hors périmètre v1 (§11) — le
 Solar est en MIP, donc contraste et coût de redessin différents.
 
-## Ce que le budget de 128 Ko implique
+## Mesuré au simulateur (profiler, pack RT 2026)
 
-Le régime établi est confortable : pour RT 2026 (1 170 sommets), `xs`/`ys` en
-Float et `cum` en Number pèsent ~14 Ko, profil et côtes quelques Ko de plus.
+| | v1 (couples/dicts) | **v2 (tableaux plats)** |
+|---|---:|---:|
+| Pic mémoire | 95,9 Ko (**77 %**) | **63,9 Ko (51 %)** ✅ |
+| Régime établi | 40,9 Ko (33 %) | 40,8 Ko (33 %) |
+| Pic d'objets | 1 019 | **109** |
 
-**Le point sensible est le pic au chargement.** Le dictionnaire JSON décodé
-coexiste un instant avec les tableaux typés, et sa représentation Monkey C vaut
-plusieurs fois les 18,4 Ko du texte source. Mitigations déjà en place :
+Cible du §9 (< 70 % du budget, soit 87 Ko) : **atteinte**, avec ~23 Ko de marge.
 
-- `CoursePack` recopie tout dans des tableaux typés et expose `cosLat`, pour que
-  `RunnavDataField.initialize` puisse mettre le dictionnaire à `null`
-  **avant** d'allouer le `Locator` et les renderers ;
-- `SIZE_WARN_BYTES` (exporteur run-nav) reste à 32 Ko, marge volontairement large.
+Ce qui a fait la différence : le profil était encodé en 436 couples `[d, e]`,
+soit 436 objets Monkey C avec chacun son surcoût, plus un dictionnaire par côte
+et par POI. Le pack v2 passe tout en tableaux plats parallèles (457 sous-objets
+→ 0), et `CoursePack` les référence directement au lieu de les recopier.
 
-**À mesurer au profiler** : le pic réel à l'`initialize()`. C'est le seul chiffre
-qui manque encore. S'il dépasse, le levier est `trackMaxPoints` dans
-l'exporteur — et le baisser **ne dégrade que le tracé, jamais les distances**,
-grâce à la clé `dd`. C'est précisément ce que cette architecture achète.
+Le levier restant, si un parcours plus lourd que RT 2026 posait problème :
+baisser `trackMaxPoints` dans l'exporteur. **Cela ne dégrade que le tracé,
+jamais les distances**, grâce à la clé `dd`.
 
-Le `BufferedBitmap` du §6.2 (pré-rendu du fond de carte) n'est envisageable
-qu'après cette mesure : à 454x454 en 16 bpp, un tampon plein écran coûterait
-~412 Ko, très au-delà du budget. Il faudra donc soit un tampon partiel, soit
-s'en passer — d'où l'intérêt du culling déjà en place dans `MapRenderer`.
+Note : un `BufferedBitmap` plein écran (§6.2) reste hors de portée — à 454x454
+en 16 bpp il coûterait ~412 Ko, très au-delà des 128 Ko. Le pré-rendu devra être
+partiel ou abandonné ; le culling de `MapRenderer` joue déjà ce rôle.
 
 ## Reste à observer (non bloquant)
 

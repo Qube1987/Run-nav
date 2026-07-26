@@ -43,6 +43,8 @@ class ClimbRenderer {
         var pad = MapRenderer.chordInset(w, h, top + zh / 3, zh / 3) + 6;
         var inner = w - 2 * pad;
 
+        dc.setClip(0, top, w, h - top);
+
         // séparateur zone A / zone B
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawLine(pad, top, w - pad, top);
@@ -53,6 +55,7 @@ class ClimbRenderer {
         } else {
             drawNextClimb(dc, top, zh, pad, inner, s);
         }
+        dc.clearClip();
     }
 
     // ------------------------------------------------------------- EN MONTÉE
@@ -142,8 +145,13 @@ class ClimbRenderer {
         dc.drawText(cx, y, Graphics.FONT_XTINY, desc, Graphics.TEXT_JUSTIFY_CENTER);
 
         // --- micro-profil de la portion à venir (jusqu'au sommet suivant) ---
-        y += zh / 4;
-        drawMicroProfile(dc, pad, y, inner, zh / 3, s, pack.climbE[ni]);
+        // Il vit tout en BAS de l'écran rond, là où la corde est la plus étroite :
+        // réutiliser le retrait calculé plus haut le faisait déborder du cercle.
+        // On recalcule donc le sien, sur sa propre bande verticale.
+        var yProf = top + (zh * 55) / 100;
+        var hProf = (zh * 30) / 100;
+        var padProf = MapRenderer.chordInset(w, dc.getHeight(), yProf, hProf) + 6;
+        drawMicroProfile(dc, padProf, yProf, w - 2 * padProf, hProf, s, pack.climbE[ni]);
     }
 
     /** Silhouette du profil entre deux abscisses, échelle verticale auto. */

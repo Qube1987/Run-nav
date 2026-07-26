@@ -31,7 +31,7 @@ Rien n'est perdu : c'est un déplacement de fichiers.
 | 3 — `CoursePack` + `Locator` | 🟢 **algorithme validé** et **compile** ; exécution à valider au simulateur |
 | 4 — `ClimbRenderer` + `PaceModel` (zone B) | 🟢 **modèle VAM/ETA validé** et **compile** ; rendu à voir au simulateur |
 | 5 — `MapRenderer` (zone A) | 🟢 **auto-zoom validé** et **compile** ; rendu à voir au simulateur |
-| 6 — optimisation mémoire / batterie | ⬜ à faire |
+| 6 — optimisation mémoire / batterie | 🟡 **mémoire OK** (pic 51 % du budget) ; batterie non testée |
 | 7 — chargement distant | ⬜ à faire |
 
 ### Ce qui est réellement vérifié, et ce qui ne l'est pas
@@ -76,12 +76,17 @@ cd tools
 node locator-test.mjs && node pacemodel-test.mjs && node zoom-test.mjs   # sans SDK
 ```
 
-**Compile** — `monkeyc` (SDK 9.2.0, cible `fenix847mm`) produit le `.prg` sans
-erreur ni avertissement.
+**Compile et tourne** — `monkeyc` (SDK 9.2.0, cible `fenix847mm`) produit le
+`.prg` sans erreur ni avertissement, et le data field s'affiche au simulateur.
 
-**Non vérifié** — le comportement à l'exécution. Rien n'a encore tourné au
-simulateur : rendu, cadence de `compute()`, et surtout le **pic mémoire au
-chargement** (budget data field : 128 Ko) restent à mesurer.
+| mesure (simulateur, pack RT 2026) | valeur |
+|---|---|
+| pic mémoire | **63,9 Ko / 124,5** (51 %) — cible §9 : < 70 % ✅ |
+| régime établi | 40,8 Ko (33 %) |
+| pic d'objets | 109 |
+
+**Non vérifié** — le rejeu d'une activité FIT complète (§10), la cadence de
+`compute()` écran éteint, et le test batterie réel du §9 (surcoût < 8 %).
 
 ## Le point d'architecture à ne pas casser
 
