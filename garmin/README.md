@@ -1,0 +1,93 @@
+# runnav-df — data field Connect IQ (Fenix 8)
+
+Carte vectorielle du parcours + position dans la côte en cours, pour
+l'ultra-endurance. Alimenté par les *course packs* produits par `run-nav`.
+
+## ⚠ Ce dossier est destiné à devenir son propre dépôt
+
+Le cahier des charges prévoit `qube1987/runnav-garmin-datafield`. Ce dépôt n'a
+pas pu être créé automatiquement (le jeton GitHub de la session n'a pas le droit
+de créer des dépôts), donc le projet démarre ici, dans `run-nav/garmin/`.
+
+Pour l'extraire, une fois le dépôt créé sur GitHub :
+
+```bash
+# depuis un clone de run-nav
+cd garmin
+git init && git add . && git commit -m "Import initial depuis run-nav/garmin"
+git remote add origin git@github.com:qube1987/runnav-garmin-datafield.git
+git push -u origin main
+# puis, dans run-nav : git rm -r --cached garmin && rm -rf garmin
+```
+
+Rien n'est perdu : c'est un déplacement de fichiers.
+
+## État d'avancement
+
+| jalon | état |
+|---|---|
+| 1 — squelette, manifest, `docs/device-constraints.md` | 🟡 squelette posé, **contraintes device non relevées** (pas de SDK) |
+| 2 — exporteur course pack | ✅ **fait**, dans `run-nav` (`js/coursepack.js`) |
+| 3 — `CoursePack` + `Locator` | 🟡 **algorithme validé**, code Monkey C **non compilé** |
+| 4 — `ClimbRenderer` (zone B) | ⬜ à faire |
+| 5 — `MapRenderer` (zone A) | ⬜ à faire |
+| 6 — optimisation mémoire / batterie | ⬜ à faire |
+| 7 — chargement distant | ⬜ à faire |
+
+### Ce qui est réellement vérifié, et ce qui ne l'est pas
+
+**Vérifié** — la logique du `Locator`, en rejouant une trace réelle
+(RT 2026 : 108 km, 6 852 m D+, 13 887 points) sur l'implémentation de référence
+`tools/locator-reference.mjs` :
+
+| scénario | erreur d'abscisse |
+|---|---|
+| progression normale (bruit GPS 8 m) | médiane **2,0 m**, p95 5,8 m |
+| aller-retour sur la trace (§6.3) | max 39,8 m |
+| perte GPS prolongée + reprise | max 22,1 m |
+| glitch GPS (téléportation 5 km) | rejeté, max 16,3 m |
+
+soit **2 points au-dessus de 50 m sur 4 629 mises à jour**.
+
+```bash
+cd tools && node locator-test.mjs      # ne nécessite pas le SDK
+```
+
+**Non vérifié** — tout le Monkey C (`source/*.mc`) a été écrit **sans accès au
+SDK** : jamais compilé, jamais passé au simulateur. Le fichier `Locator.mc` est
+une transliteration ligne à ligne de la référence validée, mais la syntaxe, les
+types et les appels d'API sont à confronter au compilateur. Ne pas lui faire
+confiance avant ça.
+
+## Le point d'architecture à ne pas casser
+
+Le pack porte une clé **`dd`** : la distance *réellement parcourue* entre deux
+sommets de la polyline simplifiée. **Le `Locator` doit l'utiliser pour l'abscisse**
+— et surtout pas mesurer sur les cordes de `t`.
+
+Raison : Douglas-Peucker préserve la forme mais raccourcit la longueur (il coupe
+les lacets). Sur RT 2026, mesurer sur les cordes donne **3,2 % d'erreur, soit
+3,4 km** sur la distance restante. Les deux contraintes du cahier des charges
+(≤ 2 500 points *et* écart < 0,5 %) sont incompatibles par la seule tolérance :
+il faudrait ~6 100 points et 41 Ko. En séparant *dessiner* (sommets simplifiés)
+et *mesurer* (échelle `dd`), on obtient **1 170 points, 18,4 Ko, 0,000 % d'écart**.
+
+Détail complet : `run-nav/docs/coursepack.md`.
+
+## Structure
+
+```
+source/          un fichier par classe (Monkey C)
+  CoursePack.mc  parsing du pack + accès indexé (côtes, POI, profil)
+  Locator.mc     projection GPS → abscisse curviligne
+resources/       chaînes, réglages
+docs/            décisions d'architecture, contraintes device
+tools/           implémentation de référence + tests rejouables (Node, sans SDK)
+  fixtures/      trace et pack réels servant de banc d'essai
+```
+
+## Prochaine étape
+
+Relever les valeurs de `docs/device-constraints.md` sur un poste avec le SDK
+(compte développeur Garmin : **gratuit**, SDK gratuit, publication gratuite).
+Elles conditionnent le budget de points de l'exporteur et donc les renderers.

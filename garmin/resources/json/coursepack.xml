@@ -1,0 +1,6 @@
+<resources>
+  <!-- Mode A (statique) : le course pack exporté par run-nav est compilé dans
+       le .prg. Remplacer coursepack.json par l'export de l'épreuve visée
+       (run-nav → Waypoints → « Exporter pour la montre »). -->
+  <jsonData id="CoursePackData" filename="coursepack.json" />
+</resources>

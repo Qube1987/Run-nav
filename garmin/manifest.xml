@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<!--
+  ⚠ IDENTIFIANTS DE PRODUITS À COMPLÉTER.
+
+  Les identifiants exacts des variantes Fenix 8 doivent être LUS DANS LE SDK, pas
+  devinés (une valeur inventée fait échouer le build ou, pire, cible le mauvais
+  device) :
+
+      ls ~/Library/Application\ Support/Garmin/ConnectIQ/Devices/
+
+  Reporter ensuite chaque identifiant ci-dessous, et remplir
+  docs/device-constraints.md (résolutions + budget mémoire data field).
+
+  L'application est un DATA FIELD : MapView / MapTrackView y sont interdits
+  (§2.2 du cahier des charges) — la carte est un rendu vectoriel maison.
+-->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        entry="RunnavDataField"
+        id="0000000000000000000000000000000000000000"
+        launcherIcon="@Drawables.LauncherIcon"
+        minApiLevel="3.2.0"
+        name="@Strings.AppName"
+        type="datafield">
+
+        <iq:products>
+            <!-- TODO remplacer par les identifiants réels relevés dans le SDK -->
+            <!-- <iq:product id="fenix8…"/> -->
+        </iq:products>
+
+        <iq:permissions>
+            <iq:uses-permission id="Positioning"/>
+            <!-- Communications : uniquement pour le mode dynamique (jalon 7).
+                 À retirer tant que le pack est embarqué statiquement. -->
+            <!-- <iq:uses-permission id="Communications"/> -->
+        </iq:permissions>
+
+        <iq:languages>
+            <iq:language>fre</iq:language>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>

@@ -1,0 +1,4 @@
+<drawables>
+  <!-- TODO icône de lancement (taille dépendante du device, cf. docs/device-constraints.md) -->
+  <bitmap id="LauncherIcon" filename="launcher_icon.png" />
+</drawables>
