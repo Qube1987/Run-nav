@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -625,6 +625,7 @@ function startApp(track) {
     state.profile.onWaypointTap = (wp) => { highlightAt(wp.d); showWaypointInfo(wp, wp.d); };
     state.profile.onPointSelect = (d) => { highlightAt(d); showPointInfo(d); };
     state.profile.onMediaTap = (md) => openMediaFromRow(md);
+    state.profile.onPoiTap = (p) => showPoiInfo(p);
   }
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());

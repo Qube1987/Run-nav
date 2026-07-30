@@ -24,6 +24,7 @@ export class ProfileChart {
     this.waypoints = [];
     this.media = [];            // médias géolocalisés (📷) cliquables
     this.onMediaTap = null;
+    this.onPoiTap = null;      // ravitaillement tapé sur le profil
     this.finishBarrier = false; // barrière horaire à l'arrivée
     this.terrain = null;      // nature du sol : { segs:[[a,b,code]] }
     this.terrainColors = null;// map code → couleur
@@ -507,8 +508,10 @@ export class ProfileChart {
       // intention à la pose du doigt : média 📷, repère bleu, point jaune, ou pan
       const md = this._mediaAt(e.clientX, e.clientY);
       const wp = md ? null : this._dotAt(e.clientX, e.clientY);
+      const poi = (md || wp) ? null : this._poiAt(e.clientX, e.clientY);
       const onCursor = this._cursorGrab(e.clientX);
-      this._grab = { md, wp, scrub: !md && !!(wp || onCursor) }; // près d'un point/barre => scrub possible
+      // près d'un point/barre => scrub possible (mais pas si on visait une pastille)
+      this._grab = { md, wp, poi, scrub: !md && !poi && !!(wp || onCursor) };
     };
 
     const onMove = (e) => {
@@ -556,6 +559,9 @@ export class ProfileChart {
         } else if (this._grab && this._grab.wp) {
           this.setCursor(this._grab.wp.d);
           if (this.onWaypointTap) this.onWaypointTap(this._grab.wp);
+        } else if (this._grab && this._grab.poi) {
+          this.setCursor(this._grab.poi.d);
+          if (this.onPoiTap) this.onPoiTap(this._grab.poi);
         } else {
           this._scrubTo(e.clientX);
         }
@@ -653,6 +659,34 @@ export class ProfileChart {
       if (md.d == null || md.d < d0 || md.d > d1) continue;
       const dx = Math.abs(s.x(md.d) - px);
       if (dx < bd) { bd = dx; best = md; }
+    }
+    return best;
+  }
+
+  /**
+   * Pastille de ravitaillement sous le doigt, ou null.
+   * Les macarons sont dessinés ~19 px (dpr) au-dessus de la courbe : on teste
+   * autour de ce centre, et non sur la courbe elle-même, sinon rien n'est
+   * jamais attrapé.
+   */
+  _poiAt(clientX, clientY) {
+    if (!this.pois || !this.pois.length || !this.track) return null;
+    const s = this._scales();
+    const [d0, d1] = this._range();
+    const { px, py } = this._toCanvasPx(clientX, clientY);
+    const r = 15 * this.dpr;
+    let best = null, bestDist = r;
+    let lastX = -1e9;
+    for (const q of this.pois) {
+      if (q.d == null || q.d < d0 || q.d > d1) continue;
+      const qx = s.x(q.d);
+      // même filtre d'espacement qu'au dessin : on ne peut pas viser une pastille
+      // qui n'a pas été tracée.
+      if (qx - lastX < 14 * this.dpr) continue;
+      lastX = qx;
+      const qy = s.y(pointAtDistance(this.track.points, q.d).ele) - 19 * this.dpr;
+      const dist = Math.hypot(qx - px, qy - py);
+      if (dist < bestDist) { bestDist = dist; best = q; }
     }
     return best;
   }
