@@ -90,6 +90,21 @@ export async function fetchPois(gpxKey) {
   return (data && Array.isArray(data.pois) && data.pois.length) ? data : null;
 }
 
+/** Demande le calcul des POI d'une trace (Edge Function → Overpass → cache).
+    `pts` : polyline échantillonnée [[lat, lon, d], …]. Idempotent : si la trace a
+    déjà été traitée, la fonction ne refait rien et répond « cached ».
+    Renvoie le nombre de POI trouvés, ou null si le calcul n'a pas abouti
+    (Overpass saturé, réseau…) — auquel cas on réessaiera à la prochaine ouverture. */
+export async function buildPois(gpxKey, pts) {
+  if (!gpxKey || !Array.isArray(pts) || pts.length < 2) return null;
+  const res = await apiFetch('/functions/v1/runnav-pois', {
+    method: 'POST', body: JSON.stringify({ gpxKey, pts }),
+  });
+  if (!res.ok) return null;
+  const out = await res.json();
+  return (out && out.status) ? out : null;
+}
+
 /** Liste les épreuves du compte connecté (RLS filtre automatiquement sur user_id). */
 export async function cloudListRaces() {
   const path = `/rest/v1/${TABLE}?select=code,name,gpx_key,updated_at&order=updated_at.desc`;

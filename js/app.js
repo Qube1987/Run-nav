@@ -14,7 +14,7 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
-  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois,
+  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois, buildPois,
 } from './storage.js';
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -1997,6 +1997,24 @@ function renderTerrainLegend() {
 }
 
 // ------------------------------------------------------------------ CALQUE RAVITAILLEMENT (OSM)
+/** Trace échantillonnée à pas régulier, envoyée au serveur pour le calcul des POI.
+    100 m suffisent très largement : le filtre de proximité est à 500 m, et cela
+    garde le payload à quelques kilo-octets même sur un ultra (6 Ko pour 27 km). */
+function samplePolyline(spacing) {
+  const out = [];
+  if (!state.track) return out;
+  const pts = state.track.points;
+  let last = -1e9;
+  for (const p of pts) {
+    if (p.d - last < spacing) continue;
+    out.push([+p.lat.toFixed(5), +p.lon.toFixed(5), Math.round(p.d)]);
+    last = p.d;
+  }
+  const end = pts[pts.length - 1];
+  out.push([+end.lat.toFixed(5), +end.lon.toFixed(5), Math.round(end.d)]);
+  return out;
+}
+
 async function loadPois() {
   state.pois = null; state.poisOn = false;
   state.poiOff = new Set();                 // catégories masquées par l'utilisateur
@@ -2006,6 +2024,22 @@ async function loadPois() {
   if (state.profile) { state.profile.setPois([], null); }
   let data = null;
   try { data = await fetchPois(state.gpxKey); } catch (_) { /* réseau : sans gravité */ }
+  // Jamais calculés pour cette trace (import récent) : on lance le calcul côté
+  // serveur, puis on relit. Silencieux et non bloquant — si Overpass est saturé,
+  // le bouton reste simplement masqué et on retentera à la prochaine ouverture.
+  if (!data && state.gpxKey && isLoggedIn()) {
+    try {
+      const out = await buildPois(state.gpxKey, samplePolyline(100));
+      if (out) {
+        data = await fetchPois(state.gpxKey);
+        // On ne le signale qu'au PREMIER calcul : à la réouverture d'une épreuve
+        // déjà traitée la réponse est « cached », inutile de le répéter.
+        if (out.status === 'built' && data) {
+          toast(`💧 ${data.pois.length} points de ravitaillement repérés sur le parcours.`);
+        }
+      }
+    } catch (_) { /* ignore */ }
+  }
   if (!data || state.gpxKey == null) return;
   // catégories masquées au départ = celles déclarées optionnelles
   for (const k of POI_ORDER) { if (!POI[k].on) state.poiOff.add(k); }
