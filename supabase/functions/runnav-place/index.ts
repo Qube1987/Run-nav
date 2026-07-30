@@ -63,6 +63,8 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           textQuery: name,
           maxResultCount: 1,
+          languageCode: 'fr',
+          regionCode: 'FR',
           // biais serré : on cherche CE commerce-là, pas un homonyme à 20 km
           locationBias: { circle: { center: { latitude: lat, longitude: lon }, radius: 120 } },
         }),
@@ -94,7 +96,9 @@ Deno.serve(async (req) => {
     }
 
     // --- 2) détails en DIRECT, jamais stockés ---
-    const dres = await fetch(`${DETAILS}/${encodeURIComponent(placeId)}?fields=${DETAIL_FIELDS}`, {
+    // languageCode : sans lui, les horaires reviennent en anglais et en format
+    // 12 h (« Monday: 9:00 AM »), illisible dans une app francaise.
+    const dres = await fetch(`${DETAILS}/${encodeURIComponent(placeId)}?fields=${DETAIL_FIELDS}&languageCode=fr&regionCode=FR`, {
       headers: { 'X-Goog-Api-Key': key },
     });
     if (!dres.ok) {
