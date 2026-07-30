@@ -14,7 +14,7 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
-  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois, buildPois,
+  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois, buildPois, fetchPlace,
 } from './storage.js';
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2044,6 +2044,7 @@ async function loadPois() {
   if (!data || state.gpxKey == null) return;
   // catégories masquées au départ = celles déclarées optionnelles
   for (const k of POI_ORDER) { if (!POI[k].on) state.poiOff.add(k); }
+  data.pois.forEach((p, i) => { p._i = i; });   // indice d'origine (cache du place_id)
   state.pois = data;
   $('pf-poi').hidden = false;                // le bouton n'apparaît que s'il y a des données
 }
@@ -2106,13 +2107,54 @@ function updateNextPoi() {
     + (best.n ? ` · ${best.n}` : '');
   el.hidden = false;
 }
+// Catégories pour lesquelles un horaire a un sens. Une fontaine ou un abri n'en
+// a pas, et n'a le plus souvent pas de nom : inutile de dépenser un appel.
+const POI_HOURS_OK = new Set(['alim', 'boul', 'resto', 'cafe', 'essence', 'velo', 'heberg', 'camping']);
+
+/** Fiche d'un point de ravitaillement. Les horaires arrivent après coup :
+    ils sont demandés en direct à Google et jamais stockés (cf. docs/pois.md). */
 function showPoiInfo(p) {
   const t = POI[p.c] || { i: '📍', label: p.c };
-  const parts = [`${t.i} ${p.n || t.label}`, `km ${(p.d / 1000).toFixed(1)}`];
-  if (p.o > 30) parts.push(`à ${p.o} m de la trace`);
-  if (p.h) parts.push(`🕑 ${p.h}`);
-  toast(parts.join(' · '));
+  const rows = [['Distance / départ', `${(p.d / 1000).toFixed(1)} km`]];
+  if (p.o > 30) rows.push(['Écart à la trace', `${p.o} m`]);
+  if (p.h) rows.push(['Horaires (OSM)', escapeHtml(p.h)]);
+  const wantHours = POI_HOURS_OK.has(p.c) && !!p.n;
+  $('wi-body').innerHTML =
+    `<h3 class="wi-title">${t.i} ${escapeHtml(p.n || t.label)}</h3>
+     <p class="wi-sub">${escapeHtml(t.label)}</p>
+     <div class="wi-rows">${rows.map(([k, v]) =>
+        `<div class="wi-row"><span class="wi-k">${k}</span><span class="wi-v">${v}</span></div>`).join('')}</div>
+     ${wantHours ? '<div id="poi-live" class="poi-live">⏳ Horaires…</div>' : ''}`;
+  $('wpt-info').hidden = false;
+  if (wantHours) loadPoiHours(p);
 }
+
+/** Interroge Google Places pour ce POI et complète la fiche si elle est encore
+    ouverte. Silencieux en cas d'échec : mieux vaut pas d'horaire qu'un faux. */
+async function loadPoiHours(p) {
+  let out = null;
+  try {
+    out = await fetchPlace({
+      lat: p.lat, lon: p.lon, name: p.n, placeId: p.g || '',
+      gpxKey: state.gpxKey, idx: (p._i != null ? p._i : -1),
+    });
+  } catch (_) { /* réseau */ }
+  const el = $('poi-live');
+  if (!el) return;                          // fiche refermée entre-temps
+  if (!out || out.status !== 'ok') { el.remove(); return; }
+  if (out.placeId) p.g = out.placeId;       // évite de repayer l'appariement
+  const closed = out.businessStatus && out.businessStatus !== 'OPERATIONAL';
+  const badge = closed ? '<span class="pv-closed">Définitivement fermé</span>'
+    : (out.openNow === true ? '<span class="pv-open">Ouvert</span>'
+      : (out.openNow === false ? '<span class="pv-shut">Fermé</span>' : ''));
+  const list = (out.hours || []).slice(0, 7)
+    .map((h) => `<div class="pv-h">${escapeHtml(h)}</div>`).join('');
+  if (!badge && !list) { el.remove(); return; }
+  el.innerHTML = `<div class="pv-head">${badge}${out.website
+      ? `<a class="pv-link" href="${escAttr(out.website)}" target="_blank" rel="noopener">site ↗</a>` : ''}</div>`
+    + list + `<div class="pv-src">${escapeHtml(out.attribution || 'Horaires : Google')}</div>`;
+}
+
 
 function fmtDist(m) {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;

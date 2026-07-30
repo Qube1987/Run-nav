@@ -808,6 +808,22 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 .pl-src { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.12);
   font-size: 10.5px; color: var(--muted); }
 
+/* Horaires Google, chargés à la demande dans la fiche d'un POI */
+.poi-live {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--muted); line-height: 1.6;
+}
+.pv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pv-open, .pv-shut, .pv-closed {
+  font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px;
+}
+.pv-open { background: rgba(63, 191, 111, 0.18); color: #7fe0a4; }
+.pv-shut { background: rgba(255, 90, 60, 0.16); color: #ff9c86; }
+.pv-closed { background: rgba(138, 151, 168, 0.18); color: var(--muted); }
+.pv-link { margin-left: auto; color: var(--blue); font-size: 12px; text-decoration: none; }
+.pv-h { font-variant-numeric: tabular-nums; }
+.pv-src { margin-top: 7px; font-size: 10.5px; opacity: 0.75; }
+
 /* Prochain ravitaillement : barre autonome, et non un badge dans le bandeau de
    côte — celui-ci est masqué hors des côtes, précisément quand on cherche un
    point d'eau. */

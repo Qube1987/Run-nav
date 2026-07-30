@@ -105,6 +105,19 @@ export async function buildPois(gpxKey, pts) {
   return (out && out.status) ? out : null;
 }
 
+/** Horaires d'un POI, demandés A LA DEMANDE (Google Places, via Edge Function).
+    Rien n'est stocké côté serveur hormis le `place_id` — les conditions Google
+    interdisent de conserver le contenu Places. Renvoie { status: 'ok' | 'nokey' |
+    'nomatch' | 'error' } : « nokey » signifie simplement qu'aucune clé n'est
+    configurée, auquel cas l'app n'affiche pas de ligne horaires. */
+export async function fetchPlace(q) {
+  const res = await apiFetch('/functions/v1/runnav-place', {
+    method: 'POST', body: JSON.stringify(q),
+  });
+  if (!res.ok) return null;
+  return await res.json();
+}
+
 /** Liste les épreuves du compte connecté (RLS filtre automatiquement sur user_id). */
 export async function cloudListRaces() {
   const path = `/rest/v1/${TABLE}?select=code,name,gpx_key,updated_at&order=updated_at.desc`;
