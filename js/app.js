@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v87';
+const APP_VERSION = 'v88';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2330,7 +2330,9 @@ function updateLiveBanner() {
     $('live-text').textContent = `🔴 En live${suffix}${eco}`;
   } else {
     b.classList.add('offline');
-    $('live-text').textContent = `Partagé${suffix || ' · appuie sur 🔗 pour le code de suivi'}`;
+    // « appuie sur 🔗 pour… » : le bouton est juste à côté, la consigne ne faisait
+    // que manger trois lignes de bandeau.
+    $('live-text').textContent = `Partagé${suffix || ' · 🔗 code de suivi'}`;
   }
 }
 async function shareLive() {
@@ -3092,12 +3094,16 @@ function updateFollowerBanner(live) {
       else if (dist > state._lastDist + 15) trend = ' ↑'; // s'éloigne
     }
     state._lastDist = dist;
-    meTxt = ` · 👣 ${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'} de toi${trend}`;
+    // « de toi » sautait : 👣 dit déjà que c'est l'écart avec l'athlète, et ces
+    // sept caractères faisaient perdre la flèche de tendance sur écran étroit.
+    meTxt = ` · 👣 ${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}${trend}`;
   }
   if (live && live.active && fresh) {
     b.classList.remove('offline');
-    const km = live.d != null ? ` · ${(live.d / 1000).toFixed(1)} km` : '';
-    $('live-text').textContent = `🔴 ${name}${km}${ecoTxt}${meTxt}`;
+    // Pas de « · 12.3 km » : la case DISTANCE juste au-dessus porte déjà
+    // l'avancement de l'athlète suivi (updateStatbar). Autant de largeur rendue
+    // à l'écart 👣, la seule info que le bandeau soit seul à donner.
+    $('live-text').textContent = `🔴 ${name}${ecoTxt}${meTxt}`;
   } else {
     b.classList.add('offline');
     $('live-text').textContent = (live ? `${name} · hors ligne` : `${name} · pas encore parti`) + meTxt;

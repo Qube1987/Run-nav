@@ -37,7 +37,10 @@ export class ProfileChart {
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
     this.minSpan = 120;       // largeur minimale visible (m)
     this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    this.pad = { l: 44, r: 14, t: 16, b: 26 };
+    // t : simple filet d'air. Étiquettes de côtes, macarons et vignettes sont
+    // dessinés SOUS p.t (à p.t+2 et p.t+sz/2), donc rien ne dépasse du canvas :
+    // les 16px d'origine étaient de la hauteur de graphe perdue.
+    this.pad = { l: 44, r: 14, t: 6, b: 26 };
     this.onViewChange = null; // notifie l'app quand la vue change (zoom/pan manuel)
     this._pointers = new Map();
     this._pinch = null;

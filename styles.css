@@ -338,7 +338,9 @@ body { overflow: hidden; }
   position: relative;
 }
 .profile-toolbar {
-  display: flex; align-items: center; gap: 6px; padding: 6px 10px 4px;
+  /* padding bas quasi nul : le canvas réserve déjà son propre air en haut
+     (pad.t dans profile.js). Les deux cumulés faisaient une bande morte. */
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px 1px;
 }
 /* Onglets réunis en segment : ils sont exclusifs, autant le montrer. */
 /* Pas de marge intérieure : c'est l'ONGLET qu'on touche, il doit donc faire la
@@ -695,11 +697,13 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 
 /* --- bandeau live --- */
 .live-banner {
-  /* Les cibles à 44px ont rogné la place du texte (114px sur un écran de 360).
-     Or « 🔴 William · 12.3 km · 👣 450 m de toi » est l'info la plus utile du
-     bandeau. On autorise donc le retour à la ligne : une rangée sur un écran
-     large, deux quand c'est serré — plutôt que d'écraser le texte. */
-  display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+  /* Une seule rangée : les boutons à droite, le texte occupant tout le reste.
+     Faire passer les boutons à la ligne suivante gâchait le vide à droite du
+     texte ET le vide à gauche des boutons, pour un bandeau deux fois plus haut.
+     Le texte — « 🔴 William · 12.3 km · 👣 450 m de toi », l'info la plus utile
+     du bandeau — s'étale sur deux lignes dans sa colonne : à hauteur de bandeau
+     inchangée, il dispose de plus de place qu'avant. */
+  display: flex; align-items: center; gap: 9px;
   background: linear-gradient(180deg, rgba(224,72,74,0.20), rgba(224,72,74,0.08));
   border-bottom: 1px solid rgba(224,72,74,0.35);
   padding: 8px 12px; font-size: 14px; font-weight: 700; color: #ffd8d8;
@@ -708,8 +712,15 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 .lb-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4d4d; flex: none; animation: lb-pulse 1.3s infinite; }
 .live-banner.offline .lb-dot { background: var(--muted); animation: none; }
 @keyframes lb-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-.lb-text { flex: 1 1 auto; min-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lb-actions { display: flex; gap: 6px; flex: 1 1 auto; justify-content: flex-end; }
+/* Trois lignes maxi. Deux suffisent presque toujours et le bandeau garde alors
+   la hauteur des boutons ; la troisième n'est là que pour le cas le plus dense
+   (« 🔴 William · 12.3 km · 🔋 éco · 👣 450 m de toi ↓ ») sur écran étroit, où
+   elle coûte 6px — contre 45px si les boutons passaient à la ligne. */
+.lb-text {
+  flex: 1 1 auto; min-width: 0; line-height: 1.22; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+}
+.lb-actions { display: flex; gap: 6px; flex: none; }
 .lb-btn {
   position: relative;
   min-width: var(--tap); height: var(--tap); padding: 0 6px;
