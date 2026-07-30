@@ -327,11 +327,6 @@ body { overflow: hidden; }
 }
 :fullscreen .fs-btn, .fs-active .fs-btn { z-index: 10000; }
 .fs-btn.active { background: var(--accent); color: #fff; border-color: transparent; }
-.fs-hint {
-  position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 10001;
-  background: rgba(10, 13, 18, 0.92); border: 1px solid var(--line); color: var(--text);
-  padding: 8px 14px; border-radius: 10px; font-size: 14px; white-space: nowrap;
-}
 
 /* --- profil --- */
 .profile-wrap {

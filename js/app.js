@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -387,7 +387,7 @@ function init() {
   $('map-fs').addEventListener('click', (e) => { e.stopPropagation(); toggleFs(document.querySelector('.map-wrap'), $('map-fs')); });
   document.addEventListener('fullscreenchange', onNativeFsChange);
   document.addEventListener('webkitfullscreenchange', onNativeFsChange);
-  window.addEventListener('orientationchange', () => { if (fsEl) { fsResize(); updateFsHint(); } });
+  window.addEventListener('orientationchange', () => { if (fsEl) fsResize(); });
 
   // type d'effort par défaut (dernier choisi), reflété sur l'accueil
   state.activity = localGet('activity') || 'run';
@@ -431,17 +431,15 @@ function toggleFs(el, btn) {
 async function enterFs(el, btn) {
   fsEl = el; fsBtn = btn || null;
   if (fsBtn) fsBtn.classList.add('active');
-  // les overlays (fiche point, indice) doivent vivre DANS l'élément plein écran
-  // pour être rendus en plein écran natif et au-dessus en repli CSS.
+  // la fiche d'un point doit vivre DANS l'élément plein écran pour être rendue
+  // en plein écran natif, et au-dessus en repli CSS.
   el.appendChild($('wpt-info'));
-  el.appendChild($('fs-hint'));
   let native = false;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   if (req) { try { await req.call(el); native = true; } catch (_) { /* iOS : pas de FS sur un div */ } }
   if (!native) { el.classList.add('fs-active'); document.body.classList.add('fs-css'); }
   try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (_) { /* iOS / desktop */ }
   fsResize();
-  updateFsHint();
 }
 
 function exitFs() {
@@ -452,9 +450,7 @@ function exitFs() {
   if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
   // remet les overlays au niveau du body et ferme la fiche
   document.body.appendChild($('wpt-info'));
-  document.body.appendChild($('fs-hint'));
   $('wpt-info').hidden = true;
-  $('fs-hint').hidden = true;
   try { if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) { /* ignore */ }
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
   fsResize();
@@ -466,9 +462,7 @@ function onNativeFsChange() {
     fsEl = null;
     if (fsBtn) { fsBtn.classList.remove('active'); fsBtn = null; }
     document.body.appendChild($('wpt-info'));
-    document.body.appendChild($('fs-hint'));
     $('wpt-info').hidden = true;
-    $('fs-hint').hidden = true;
     try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) { /* ignore */ }
     fsResize();
   }
@@ -479,11 +473,6 @@ function fsResize() {
     if (state.map) state.map.invalidate();
     if (state.profile) state.profile.resize();
   }, 160);
-}
-
-function updateFsHint() {
-  const portrait = window.matchMedia('(orientation: portrait)').matches;
-  $('fs-hint').hidden = !(fsEl && portrait);
 }
 
 // ------------------------------------------------------------------ PWA / HORS-LIGNE
