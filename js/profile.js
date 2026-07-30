@@ -30,6 +30,8 @@ export class ProfileChart {
     this.terrainLabels = null;// map code → libellé
     this.terrainOn = false;   // calque terrain affiché ?
     this.descents = [];       // descentes notées : [{startD,endD,label,color}]
+    this.pois = [];           // ravitaillement OSM : [{d, c, n}]
+    this.poiDefs = null;      // map catégorie → { i, c, label }
     this.cursorD = null;      // distance de la position courante (m)
     this.win = null;          // [d0, d1] fenêtre visible (m) — source de vérité du zoom
     this.minSpan = 120;       // largeur minimale visible (m)
@@ -67,6 +69,7 @@ export class ProfileChart {
   setTerrain(data, colors, labels) { this.terrain = data; this.terrainColors = colors; this.terrainLabels = labels || null; this.render(); }
   setTerrainOn(on) { this.terrainOn = !!on; this.render(); }
   setDescents(list) { this.descents = Array.isArray(list) ? list : []; this.render(); }
+  setPois(list, defs) { this.pois = Array.isArray(list) ? list : []; this.poiDefs = defs || null; this.render(); }
   setCursor(d) { this.cursorD = d; this.render(); }
   setView(view, range) {
     if (view === 'climb' && range) this.win = [range[0], range[1]];
@@ -351,6 +354,34 @@ export class ProfileChart {
       ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       ctx.fillText('⏱', fx, p.t + 1 * this.dpr);
+    }
+
+    // --- ravitaillement (OSM) : pictogramme sur la courbe, sous la crête ---
+    // Placé au niveau du terrain (et non en haut comme les médias) pour se lire
+    // « le long du parcours » : on voit tout de suite qu'un point d'eau tombe au
+    // pied d'une côte ou juste après un sommet.
+    if (this.pois && this.pois.length) {
+      ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      // évite d'empiler deux pictos identiques au même endroit à faible zoom
+      let lastX = -1e9;
+      for (const q of this.pois) {
+        if (q.d == null || q.d < d0 || q.d > d1) continue;
+        const xx = x(q.d);
+        if (xx - lastX < 14 * this.dpr) continue;
+        lastX = xx;
+        const t = (this.poiDefs && this.poiDefs[q.c]) || { i: '📍', c: '#888' };
+        const yy = y(pointAtDistance(pts, q.d).ele);
+        // tige jusqu'à la courbe, puis pastille
+        ctx.strokeStyle = withAlpha(t.c, 0.7);
+        ctx.lineWidth = 1.5 * this.dpr;
+        ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy - 13 * this.dpr); ctx.stroke();
+        ctx.fillStyle = t.c;
+        ctx.beginPath(); ctx.arc(xx, yy - 19 * this.dpr, 8 * this.dpr, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(t.i, xx, yy - 14.5 * this.dpr);
+      }
     }
 
     // --- médias géolocalisés : vraie vignette (cliquable, en haut de la courbe) ---

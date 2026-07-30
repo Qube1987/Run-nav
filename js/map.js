@@ -91,6 +91,29 @@ export class RaceMap {
     if (this.doneLine) this.doneLine.bringToFront(); // garde la portion parcourue visible
   }
 
+  /**
+   * Points de ravitaillement (OSM). Pastille ronde colorée par catégorie,
+   * pictogramme au centre, cliquable. Volontairement plus discrète qu'un repère
+   * de parcours : ce sont des informations d'appoint, elles ne doivent pas
+   * masquer les waypoints que l'athlète a placés lui-même.
+   */
+  setPois(list, defs, on, onClick) {
+    if (!this.poiLayer) this.poiLayer = L.layerGroup().addTo(this.map);
+    this.poiLayer.clearLayers();
+    if (!on || !list || !list.length) return;
+    for (const p of list) {
+      if (p.lat == null || p.lon == null) continue;
+      const t = (defs && defs[p.c]) || { i: '📍', c: '#888' };
+      const html = `<div class="poi-pin" style="background:${t.c}"><span>${t.i}</span></div>`;
+      const m = L.marker([p.lat, p.lon], {
+        icon: L.divIcon({ className: 'poi-icon', html, iconSize: [24, 24], iconAnchor: [12, 12] }),
+        zIndexOffset: 300,          // sous les waypoints et les médias
+      }).addTo(this.poiLayer);
+      if (p.n) m.bindTooltip(p.n, { direction: 'top' });
+      m.on('click', () => { if (onClick) onClick(p); });
+    }
+  }
+
   /** Met à jour la portion parcourue jusqu'à l'index de segment donné. */
   setProgress(index, projected) {
     if (!this._latlngs) return;

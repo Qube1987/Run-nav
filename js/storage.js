@@ -77,6 +77,19 @@ export async function fetchTerrain(gpxKey) {
   return (data && Array.isArray(data.segs)) ? data : null;
 }
 
+/** Points d'intérêt (eau, ravitaillement…) le long d'une épreuve, par empreinte GPX.
+    Dérivés d'OpenStreetMap et mis en cache côté serveur : Overpass est limité en
+    débit, on ne l'interroge jamais depuis le navigateur. */
+export async function fetchPois(gpxKey) {
+  if (!gpxKey) return null;
+  const res = await apiFetch('/rest/v1/rpc/runnav_get_pois', {
+    method: 'POST', body: JSON.stringify({ p_gpx_key: gpxKey }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data && Array.isArray(data.pois) && data.pois.length) ? data : null;
+}
+
 /** Liste les épreuves du compte connecté (RLS filtre automatiquement sur user_id). */
 export async function cloudListRaces() {
   const path = `/rest/v1/${TABLE}?select=code,name,gpx_key,updated_at&order=updated_at.desc`;

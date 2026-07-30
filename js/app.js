@@ -14,7 +14,7 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
-  cloudListRaces, cloudDeleteRace, fetchTerrain,
+  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois,
 } from './storage.js';
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
@@ -43,6 +43,27 @@ const TERRAIN = {
 };
 const TERRAIN_COLORS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.c]));
 const TERRAIN_LABELS = Object.fromEntries(Object.entries(TERRAIN).map(([k, v]) => [k, v.label]));
+
+// ------------------------------------------------------------------ POINTS D'INTÉRÊT (OSM)
+// Ravitaillement le long du parcours, dérivé d'OpenStreetMap (ODbL).
+// `on` = affiché par défaut : on montre d'abord ce qui compte en course (eau,
+// nourriture, abris) et on laisse le reste en option, pour ne pas noyer la carte.
+const POI = {
+  eau:     { i: '💧', label: 'Eau potable',    c: '#4aa3ff', on: true },
+  alim:    { i: '🛒', label: 'Alimentation',   c: '#3fbf6f', on: true },
+  boul:    { i: '🥖', label: 'Boulangerie',    c: '#e0a83a', on: true },
+  refuge:  { i: '🛖', label: 'Refuge',         c: '#b06fff', on: true },
+  abri:    { i: '⛱️', label: 'Abri',           c: '#8a97a8', on: true },
+  cafe:    { i: '☕', label: 'Café / glacier', c: '#c98a5a', on: false },
+  resto:   { i: '🍽️', label: 'Restauration',   c: '#ff8a5c', on: false },
+  wc:      { i: '🚻', label: 'Toilettes',      c: '#6f8fa8', on: false },
+  distri:  { i: '🥤', label: 'Distributeur',   c: '#5ac8c8', on: false },
+  essence: { i: '⛽', label: 'Station',         c: '#a8a85a', on: false },
+  velo:    { i: '🚲', label: 'Vélociste',      c: '#7a5cff', on: false },
+  heberg:  { i: '🛏️', label: 'Hébergement',    c: '#c86fae', on: false },
+  camping: { i: '🏕️', label: 'Camping',        c: '#5aa86f', on: false },
+};
+const POI_ORDER = Object.keys(POI);
 
 // Courabilité des descentes = nature du sol × déclivité.
 // Score 0..1 : 1 = on court à fond, 0 = on marche. Note pondérée par la longueur
@@ -96,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v81';
+const APP_VERSION = 'v82';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -271,6 +292,8 @@ function init() {
   $('pf-full').addEventListener('click', () => setProfileView('full'));
   $('pf-zoom').addEventListener('click', () => setProfileView('climb'));
   $('pf-terrain').addEventListener('click', toggleTerrain);
+  $('pf-poi').addEventListener('click', togglePois);
+  $('poi-legend').addEventListener('click', onPoiLegendClick);
   $('pf-follow').addEventListener('click', () => {
     state.follow = !state.follow;
     $('pf-follow').classList.toggle('active', state.follow);
@@ -606,6 +629,7 @@ function startApp(track) {
   state.profile.setTrack(track, state.climbs);
   requestAnimationFrame(() => state.profile.resize());
   loadTerrain(); // nature du sol (si disponible pour cette trace)
+  loadPois();    // ravitaillement OSM (idem)
 
   // synchronise l'UI (type d'effort, mode, vitesse) avec la config restaurée
   document.querySelectorAll('[data-activity]').forEach((b) =>
@@ -970,6 +994,7 @@ function recalibrateFromNow() {
 
 // ------------------------------------------------------------------ BANDEAU CÔTE
 function updateClimbBanner(d) {
+  updateNextPoi();   // le prochain ravito suit la même cadence que la côte en cours
   const banner = $('climb-banner');
   const cur = currentClimb(state.climbs, d);
   if (!cur) { banner.hidden = true; return; }
@@ -1027,6 +1052,7 @@ function onScrub(d, pt) {
   const p = pointAtDistance(state.track.points, d);
   if (state.map) state.map.highlightCursor(p.lat, p.lon);
   if (!state.lastFix || !state.lastFix.onRoute) state.profile.setCursor(d);
+  updateNextPoi();   // hors GPS, le point inspecté sert de référence
 }
 
 /** Vrai quand l'utilisateur inspecte un point (fiche ouverte) : on gèle alors la
@@ -1968,6 +1994,89 @@ function renderTerrainLegend() {
   }
   el.innerHTML = html;
   el.hidden = false;
+}
+
+// ------------------------------------------------------------------ CALQUE RAVITAILLEMENT (OSM)
+async function loadPois() {
+  state.pois = null; state.poisOn = false;
+  state.poiOff = new Set();                 // catégories masquées par l'utilisateur
+  $('pf-poi').hidden = true; $('pf-poi').classList.remove('active');
+  $('poi-legend').hidden = true;
+  if (state.map) state.map.setPois(null, null, false);
+  if (state.profile) { state.profile.setPois([], null); }
+  let data = null;
+  try { data = await fetchPois(state.gpxKey); } catch (_) { /* réseau : sans gravité */ }
+  if (!data || state.gpxKey == null) return;
+  // catégories masquées au départ = celles déclarées optionnelles
+  for (const k of POI_ORDER) { if (!POI[k].on) state.poiOff.add(k); }
+  state.pois = data;
+  $('pf-poi').hidden = false;                // le bouton n'apparaît que s'il y a des données
+}
+function visiblePois() {
+  if (!state.pois) return [];
+  return state.pois.pois.filter((p) => POI[p.c] && !state.poiOff.has(p.c));
+}
+function togglePois() {
+  if (!state.pois) return;
+  state.poisOn = !state.poisOn;
+  $('pf-poi').classList.toggle('active', state.poisOn);
+  refreshPois();
+}
+/** Pousse la sélection courante à la carte, au profil et à la légende. */
+function refreshPois() {
+  const list = state.poisOn ? visiblePois() : [];
+  if (state.map) state.map.setPois(list, POI, state.poisOn, (p) => showPoiInfo(p));
+  if (state.profile) state.profile.setPois(list, POI);
+  renderPoiLegend();
+  updateNextPoi();
+}
+/** Légende cliquable : chaque catégorie s'allume/s'éteint d'un tap. */
+function renderPoiLegend() {
+  const el = $('poi-legend');
+  if (!state.poisOn || !state.pois) { el.hidden = true; return; }
+  const count = {};
+  for (const p of state.pois.pois) count[p.c] = (count[p.c] || 0) + 1;
+  const codes = POI_ORDER.filter((c) => count[c]);
+  el.innerHTML = '<div class="tl-title">🍽️ Ravitaillement</div>'
+    + codes.map((c) => {
+      const off = state.poiOff.has(c);
+      return `<button type="button" class="pl-row${off ? ' off' : ''}" data-poi="${c}">`
+        + `<span class="pl-ico">${POI[c].i}</span>${POI[c].label}`
+        + `<span class="pl-n">${count[c]}</span></button>`;
+    }).join('')
+    + '<div class="pl-src">Données OpenStreetMap (ODbL)</div>';
+  el.hidden = false;
+}
+function onPoiLegendClick(e) {
+  const b = e.target.closest('[data-poi]');
+  if (!b) return;
+  const c = b.dataset.poi;
+  if (state.poiOff.has(c)) state.poiOff.delete(c); else state.poiOff.add(c);
+  refreshPois();
+}
+/** Prochain ravitaillement devant nous, affiché dans le bandeau des côtes. */
+function updateNextPoi() {
+  const el = $('next-poi');
+  if (!el) return;
+  // position GPS si on l'a, sinon le point inspecte sur le profil
+  const d = (state.lastFix && state.lastFix.onRoute) ? state.lastFix.d
+          : (state.scrubD != null ? state.scrubD : null);
+  if (!state.poisOn || d == null) { el.hidden = true; return; }
+  const list = visiblePois();
+  let best = null;
+  for (const p of list) { if (p.d >= d && (!best || p.d < best.d)) best = p; }
+  if (!best) { el.hidden = true; return; }
+  const away = best.d - d;
+  el.textContent = `${POI[best.c].i} ${fmtDist(away)}`
+    + (best.n ? ` · ${best.n}` : '');
+  el.hidden = false;
+}
+function showPoiInfo(p) {
+  const t = POI[p.c] || { i: '📍', label: p.c };
+  const parts = [`${t.i} ${p.n || t.label}`, `km ${(p.d / 1000).toFixed(1)}`];
+  if (p.o > 30) parts.push(`à ${p.o} m de la trace`);
+  if (p.h) parts.push(`🕑 ${p.h}`);
+  toast(parts.join(' · '));
 }
 
 function fmtDist(m) {

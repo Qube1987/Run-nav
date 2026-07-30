@@ -775,6 +775,50 @@ input.pr-info:focus { outline: none; border-color: var(--blue); }
 .cm-copy:active { opacity: 0.7; }
 .cm-card .wide-btn { margin: 0; }
 
+/* ---- Ravitaillement (POI OpenStreetMap) ---- */
+/* Pastille sur la carte : plus discrète qu'un repère de parcours, pour ne pas
+   masquer les waypoints que l'athlète a placés lui-même. */
+.poi-icon { text-align: center; }
+.poi-pin {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.poi-pin > span { font-size: 12px; line-height: 1; }
+
+/* Légende à GAUCHE : celle du terrain occupe la droite (et le bouton plein
+   écran le coin bas-gauche, d'où le décalage vertical). */
+.poi-legend {
+  position: absolute; left: 8px; bottom: 58px; z-index: 500;
+  background: rgba(15, 18, 24, 0.9); border: 1px solid var(--line); border-radius: 10px;
+  padding: 7px 8px; font-size: 12px; color: #fff; max-width: 60%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); backdrop-filter: blur(2px);
+  max-height: 46%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.poi-legend .tl-title { font-weight: 800; font-size: 12.5px; margin-bottom: 5px; }
+.pl-row {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: none; color: #fff; font-size: 12px;
+  padding: 3px 2px; cursor: pointer; text-align: left; line-height: 1.4;
+}
+.pl-row.off { opacity: 0.38; }
+.pl-row:active { background: rgba(255, 255, 255, 0.08); border-radius: 6px; }
+.pl-ico { font-size: 14px; width: 18px; flex: none; text-align: center; }
+.pl-n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pl-src { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.12);
+  font-size: 10.5px; color: var(--muted); }
+
+/* Prochain ravitaillement : barre autonome, et non un badge dans le bandeau de
+   côte — celui-ci est masqué hors des côtes, précisément quand on cherche un
+   point d'eau. */
+.next-poi {
+  margin: 0 10px 6px; padding: 5px 11px;
+  background: rgba(74, 163, 255, 0.14); border: 1px solid rgba(74, 163, 255, 0.4);
+  color: #cfe6ff; border-radius: 10px;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; text-align: center;
+}
+
 /* Rappel « suivi en arrière-plan » */
 .bg-lead { margin: 0 0 14px; font-size: 13.5px; color: var(--text); line-height: 1.45; }
 .bg-steps { text-align: left; display: flex; flex-direction: column; gap: 11px; margin-bottom: 16px; }
