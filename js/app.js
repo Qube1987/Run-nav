@@ -117,7 +117,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -2313,7 +2313,11 @@ function updateLiveBanner() {
   $('live-mates').hidden = false;  // 👀 suivre un pote (athlète)
   $('follow-geo').hidden = true;   // (follower uniquement)
   $('live-share').hidden = !shared;
-  $('live-inbox').hidden = !shared;
+  // Salon : la barre d'actions basse porte déjà « 💬 Salon » avec son badge en
+  // mode athlète. Un second bouton dans le bandeau était un doublon strict
+  // (même appel openSalon) qui mangeait de la largeur. Il ne sert qu'aux
+  // followers, pour qui la barre basse est masquée.
+  $('live-inbox').hidden = true;
   $('live-feed').hidden = !shared;
   updateEcoUI();
   const suffix = state.myFollowCode ? ` · suivi ${state.myFollowCode}` : '';
