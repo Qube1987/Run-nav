@@ -19,6 +19,7 @@ import {
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
 } from './auth.js';
+import { getTheme, setTheme, cycleTheme, onThemeChange, THEME_ICON, THEME_LABEL } from './theme.js';
 import {
   broadcastPosition, setLiveActive, fetchLive,
   uploadMedia, fetchMedia, deleteMedia, mediaUrl,
@@ -117,7 +118,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -396,6 +397,8 @@ function init() {
   document.querySelectorAll('[data-activity]').forEach((b) =>
     b.classList.toggle('active', b.dataset.activity === state.activity));
 
+  setupTheme();
+
   const ver = $('app-version'); if (ver) ver.textContent = APP_VERSION;
 
   // Lien profond : run-nav…?follow=CODE → pré-remplit le suivi d'un athlète
@@ -416,6 +419,35 @@ function init() {
   }
 
   setupPWA();
+}
+
+// ------------------------------------------------------------------ THÈME CLAIR / SOMBRE
+function setupTheme() {
+  // Bouton unique sur la carte : auto → clair → sombre → auto. Un cycle plutôt
+  // qu'un menu, parce qu'on l'actionne en courant, d'une main.
+  const btn = $('map-theme');
+  if (btn) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const t = cycleTheme();
+      toast(`Affichage : ${THEME_LABEL[t]}`);
+    });
+  }
+  // Segment explicite sur l'accueil, où il y a la place de nommer les options.
+  document.querySelectorAll('[data-theme-set]').forEach((b) =>
+    b.addEventListener('click', () => setTheme(b.dataset.themeSet)));
+
+  const refresh = () => {
+    const t = getTheme();
+    if (btn) { btn.textContent = THEME_ICON[t]; btn.title = `Affichage : ${THEME_LABEL[t]}`; }
+    document.querySelectorAll('[data-theme-set]').forEach((b) =>
+      b.classList.toggle('active', b.dataset.themeSet === t));
+    // Le profil est un canvas : il ne se re-peint pas tout seul quand les
+    // variables CSS changent, il faut le lui demander.
+    if (state.profile) state.profile.render();
+  };
+  onThemeChange(refresh);
+  refresh();
 }
 
 // ------------------------------------------------------------------ PLEIN ÉCRAN

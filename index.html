@@ -7,6 +7,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Run-Nav — Suivi de course live</title>
+  <!-- Thème posé AVANT le premier rendu : chargé par un module (donc différé),
+       il ferait clignoter l'écran en sombre avant de passer au clair. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('runnav:theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.dataset.theme = t;
+        if (t === 'light') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f4f7fa');
+      } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+    })();
+  </script>
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
@@ -120,6 +134,18 @@
 
       <p id="welcome-error" class="welcome-error" hidden></p>
 
+      <!-- Thème : réglé une fois avant de partir, et rebasculable en course
+           depuis le bouton sur la carte. -->
+      <div class="theme-pick">
+        <span class="activity-label">Affichage</span>
+        <div class="seg" id="theme-seg">
+          <button class="seg-btn" data-theme-set="auto" type="button">🌗 Auto</button>
+          <button class="seg-btn" data-theme-set="light" type="button">☀️ Clair</button>
+          <button class="seg-btn" data-theme-set="dark" type="button">🌙 Sombre</button>
+        </div>
+        <p class="hint" id="theme-hint">« Auto » suit le réglage de ton téléphone. Le mode clair se lit mieux en plein soleil.</p>
+      </div>
+
       <ul class="features">
         <li>🗺️ Fond topographique</li>
         <li>📍 Position GPS en temps réel</li>
@@ -201,6 +227,9 @@
     <div class="map-wrap">
       <div id="map" class="map"></div>
       <button id="map-fs" class="fs-btn" type="button" title="Plein écran paysage">⛶</button>
+      <!-- Bascule de thème à portée de pouce : c'est en pleine lumière, en
+           course, qu'on en a besoin — pas dans un menu. -->
+      <button id="map-theme" class="fs-btn theme-btn" type="button" title="Thème clair / sombre" aria-label="Thème">🌗</button>
       <div id="terrain-legend" class="terrain-legend" hidden></div>
       <div id="poi-legend" class="poi-legend" hidden></div>
     </div>

@@ -33,6 +33,10 @@ Tout tourne **dans le navigateur** — aucune donnée n'est envoyée à un serve
   Heure de départ « maintenant » ou fixée, et **heure d'arrivée estimée**.
 - **Points de passage manuels** : touche la carte près de la trace ou pose un
   point à ta position.
+- **Thème clair / sombre** : `Auto` (réglage du téléphone), `Clair` ou
+  `Sombre`. Le mode clair est calibré pour le **plein soleil** — fond très
+  clair, texte quasi noir, traits marqués. Réglable sur l'accueil, et
+  rebasculable en course par le bouton ☀️/🌙 sur la carte.
 - Installable comme **PWA** (ajout à l'écran d'accueil).
 
 ## Utilisation
@@ -66,7 +70,7 @@ charger une boucle synthétique vallonnée et explorer l'interface sans GPX.
 
 ```
 index.html            # structure de la page
-styles.css            # thème sombre, mobile-first
+styles.css            # jetons de thème (clair + sombre), mobile-first
 manifest.webmanifest  # PWA
 js/
   app.js              # orchestration, UI, géolocalisation
@@ -76,6 +80,7 @@ js/
   profile.js          # rendu du profil altimétrique (canvas)
   pacing.js           # modèle de temps / temps de passage
   map.js              # carte Leaflet
+  theme.js            # choix clair/sombre/auto, persistance
   demo.js             # parcours de démonstration
 ```
 
@@ -89,4 +94,10 @@ js/
 - La **projection GPS** utilise une fenêtre glissante autour du dernier point
   connu pour rester performante, avec repli sur la trace entière si tu t'en
   éloignes.
+- Les **deux thèmes** vivent dans `styles.css` sous forme de jetons, le thème
+  actif étant porté par `[data-theme]` sur `<html>`. Une teinte de marque peut
+  servir de fond ou de texte : d'où les jetons `--ink-*`, mêmes couleurs
+  perçues mais contrastées pour du texte. Le profil étant un `<canvas>`, il ne
+  voit pas les variables CSS — `profile.js` les relit à chaque rendu (jetons
+  `--pc-*`), ce qui garde `styles.css` source unique des couleurs.
 - Fonds de carte © OpenTopoMap (CC-BY-SA), © OpenStreetMap, © CyclOSM.

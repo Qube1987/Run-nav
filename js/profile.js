@@ -3,6 +3,26 @@
 
 import { pointAtDistance } from './geo.js';
 
+// Jetons de thème lus dans le CSS : le canvas ne « voit » pas les variables
+// CSS, il faut les résoudre à la main. Le tableau de bord des couleurs reste
+// donc dans styles.css, source unique pour les deux thèmes.
+const INK_KEYS = {
+  grid: '--pc-grid', axis: '--pc-axis', ridge: '--pc-ridge', ink: '--pc-ink',
+  bandBg: '--pc-band-bg', bandEdge: '--pc-band-edge', climb: '--pc-climb',
+  cursor: '--pc-cursor', cursorEdge: '--pc-cursor-edge', thumbBg: '--pc-thumb-bg',
+};
+const INK_FALLBACK = {
+  grid: 'rgba(255,255,255,0.07)', axis: 'rgba(255,255,255,0.5)',
+  ridge: 'rgba(255,255,255,0.85)', ink: 'rgba(255,255,255,0.92)',
+  bandBg: 'rgba(0,0,0,0.35)', bandEdge: 'rgba(0,0,0,0.5)',
+  climb: 'rgba(210,59,59,0.10)', cursor: '#ffd24a', cursorEdge: '#1a1e26',
+  thumbBg: '#20303f', fill: 0.55,
+};
+/* Étiquettes posées sur les bandeaux saturés (nature du sol, courabilité) :
+   blanches dans les DEUX thèmes — c'est la couleur du bandeau qui porte le
+   contraste, pas celle du fond de l'appli. */
+const ON_BAND = 'rgba(255,255,255,0.92)';
+
 /** Couleur selon la pente (%), du vert (plat) au rouge foncé (raide). */
 export function gradeColor(grade) {
   const g = Math.abs(grade);
@@ -143,11 +163,25 @@ export class ProfileChart {
     return { p, x, y, d0, d1, lo, hi, plotW, plotH, w, h };
   }
 
+  /** Relit les couleurs du thème courant (appelé à chaque rendu : un changement
+   *  de thème n'a alors rien à notifier au graphe). */
+  _readInk() {
+    const cs = getComputedStyle(this.canvas);
+    const ink = {};
+    for (const k in INK_KEYS) {
+      ink[k] = (cs.getPropertyValue(INK_KEYS[k]) || '').trim() || INK_FALLBACK[k];
+    }
+    const a = parseFloat(cs.getPropertyValue('--pc-fill'));
+    ink.fill = isFinite(a) ? a : INK_FALLBACK.fill;
+    return ink;
+  }
+
   render() {
     const ctx = this.ctx;
     const w = this.canvas.width, h = this.canvas.height;
     ctx.clearRect(0, 0, w, h);
     if (!this.track) return;
+    const ink = this._readInk();
 
     const s = this._scales();
     const { p, x, y, d0, d1, lo, hi } = s;
@@ -158,8 +192,8 @@ export class ProfileChart {
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'right';
     const stepE = niceStep((hi - lo) / 4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.strokeStyle = ink.grid;
+    ctx.fillStyle = ink.axis;
     ctx.lineWidth = 1;
     for (let e = Math.ceil(lo / stepE) * stepE; e <= hi; e += stepE) {
       const yy = y(e);
@@ -184,7 +218,7 @@ export class ProfileChart {
       ctx.lineTo(x(b.d), baseY);
       ctx.closePath();
       const g = (a.grade + b.grade) / 2;
-      ctx.fillStyle = withAlpha(gradeColor(g), 0.55);
+      ctx.fillStyle = withAlpha(gradeColor(g), ink.fill);
       ctx.fill();
     }
 
@@ -195,7 +229,7 @@ export class ProfileChart {
       const px = x(pts[i].d), py = y(pts[i].ele);
       if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.strokeStyle = ink.ridge;
     ctx.lineWidth = 1.6 * this.dpr;
     ctx.lineJoin = 'round';
     ctx.stroke();
@@ -204,7 +238,7 @@ export class ProfileChart {
     if (this.terrainOn && this.terrain && this.terrain.segs) {
       const band = 13 * this.dpr;
       const yTop = (h - p.b) - band;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillStyle = ink.bandBg;
       ctx.fillRect(p.l, yTop, s.plotW, band);
       for (const seg of this.terrain.segs) {
         const a = seg[0], b = seg[1], code = seg[2];
@@ -214,7 +248,7 @@ export class ProfileChart {
         ctx.fillStyle = (this.terrainColors && this.terrainColors[code]) || '#888';
         ctx.fillRect(xa, yTop, xb - xa, band);
       }
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = ink.bandEdge;
       ctx.lineWidth = 1 * this.dpr;
       ctx.strokeRect(p.l, yTop, s.plotW, band);
 
@@ -241,7 +275,7 @@ export class ProfileChart {
           : (ctx.measureText(shrt).width <= room ? shrt : null);
         if (!txt) continue;
         // texte blanc simple, homogène avec les étiquettes de descente
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillStyle = ON_BAND;
         ctx.fillText(txt, (xa + xb) / 2, yMid);
       }
 
@@ -264,7 +298,7 @@ export class ProfileChart {
           const txt = ctx.measureText(full).width <= room ? full
             : (ctx.measureText(dn.label).width <= room ? dn.label : null);
           if (txt) {
-            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillStyle = ON_BAND;
             ctx.fillText(txt, (xa + xb) / 2, rTop - 1 * this.dpr);
           }
         }
@@ -276,7 +310,7 @@ export class ProfileChart {
       if (c.endD < d0 || c.startD > d1) continue;
       const cx0 = Math.max(p.l, x(c.startD));
       const cx1 = Math.min(w - p.r, x(c.endD));
-      ctx.fillStyle = 'rgba(210,59,59,0.10)';
+      ctx.fillStyle = ink.climb;
       ctx.fillRect(cx0, p.t, cx1 - cx0, s.plotH);
       // étiquette : longueur · pente · catégorie · durée estimée (au sommet)
       ctx.font = `700 ${10.5 * this.dpr}px system-ui, sans-serif`;
@@ -292,13 +326,13 @@ export class ProfileChart {
       const label = ctx.measureText(full).width <= room ? full
         : (ctx.measureText(short).width <= room ? short : null);
       if (label) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillStyle = ink.ink;
         ctx.fillText(label, (cx0 + cx1) / 2, p.t + 2 * this.dpr);
       }
     }
 
     // --- axe distances (km) ---
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = ink.axis;
     ctx.font = `${11 * this.dpr}px system-ui, sans-serif`;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'center';
@@ -306,9 +340,9 @@ export class ProfileChart {
     const stepKm = niceStep(spanKm / 5);
     for (let km = Math.ceil((d0 / 1000) / stepKm) * stepKm; km * 1000 <= d1; km += stepKm) {
       const xx = x(km * 1000);
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.strokeStyle = ink.grid;
       ctx.beginPath(); ctx.moveTo(xx, p.t); ctx.lineTo(xx, h - p.b); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillStyle = ink.axis;
       ctx.fillText(`${stepKm < 1 ? km.toFixed(1) : Math.round(km)}`, xx, h - p.b + 4 * this.dpr);
     }
 
@@ -395,9 +429,9 @@ export class ProfileChart {
       const sz = 26 * this.dpr;                 // côté de la vignette
       const cy = p.t + sz / 2 + 1 * this.dpr;   // centre vertical (haut du graphe)
       // fine ligne de repère vers la courbe
-      ctx.strokeStyle = withAlpha('#eaf0f6', 0.35); ctx.lineWidth = 1 * this.dpr;
+      ctx.strokeStyle = withAlpha(ink.ridge, 0.5); ctx.lineWidth = 1 * this.dpr;
       ctx.beginPath(); ctx.moveTo(xx, cy + sz / 2); ctx.lineTo(xx, h - p.b); ctx.stroke();
-      this._mediaThumb(xx, cy, sz, md);
+      this._mediaThumb(xx, cy, sz, md, ink);
     }
 
     // --- curseur position ---
@@ -405,14 +439,14 @@ export class ProfileChart {
       const cp = pointAtDistance(pts, this.cursorD);
       const xx = x(this.cursorD), yy = y(cp.ele);
       // ligne verticale
-      ctx.strokeStyle = '#ffd24a';
+      ctx.strokeStyle = ink.cursor;
       ctx.lineWidth = 2 * this.dpr;
       ctx.beginPath(); ctx.moveTo(xx, p.t); ctx.lineTo(xx, h - p.b); ctx.stroke();
       // halo + point
-      ctx.fillStyle = 'rgba(255,210,74,0.25)';
+      ctx.fillStyle = withAlpha(ink.cursor, 0.25);
       ctx.beginPath(); ctx.arc(xx, yy, 9 * this.dpr, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffd24a';
-      ctx.strokeStyle = '#1a1e26';
+      ctx.fillStyle = ink.cursor;
+      ctx.strokeStyle = ink.cursorEdge;
       ctx.lineWidth = 2 * this.dpr;
       ctx.beginPath(); ctx.arc(xx, yy, 5.5 * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
@@ -438,13 +472,13 @@ export class ProfileChart {
   }
 
   /** Vignette carrée arrondie d'un média, ombre + bordure blanche + badge vidéo. */
-  _mediaThumb(cx, cy, sz, md) {
+  _mediaThumb(cx, cy, sz, md, ink) {
     const ctx = this.ctx, r = 5 * this.dpr;
     const x0 = cx - sz / 2, y0 = cy - sz / 2;
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4 * this.dpr; ctx.shadowOffsetY = 1 * this.dpr;
     this._roundRect(x0, y0, sz, sz, r);
-    ctx.fillStyle = '#20303f'; ctx.fill();
+    ctx.fillStyle = ink.thumbBg; ctx.fill();
     ctx.restore();
     ctx.save();
     this._roundRect(x0, y0, sz, sz, r); ctx.clip();
@@ -455,7 +489,7 @@ export class ProfileChart {
       const dw = iw * scale, dh = ih * scale;
       ctx.drawImage(img, x0 + (sz - dw) / 2, y0 + (sz - dh) / 2, dw, dh);
     } else {
-      ctx.fillStyle = '#eaf0f6';
+      ctx.fillStyle = ink.ridge;
       ctx.font = `${13 * this.dpr}px system-ui, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(md.kind === 'video' ? '🎬' : '📷', cx, cy);
@@ -756,8 +790,19 @@ function niceStep(x) {
   return step * pow;
 }
 
-function withAlpha(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
+/** Ré-opacifie une couleur. Accepte #rgb, #rrggbb et rgb()/rgba() — les jetons
+ *  de thème lus dans le CSS arrivent sous cette dernière forme. */
+function withAlpha(col, a) {
+  if (!col) return `rgba(255,255,255,${a})`;
+  const m = /^rgba?\(([^)]+)\)$/i.exec(col.trim());
+  if (m) {
+    const [r, g, b] = m[1].split(',').map((v) => parseFloat(v));
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  let hex = col.trim().replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  const n = parseInt(hex, 16);
+  if (!isFinite(n)) return col;
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return `rgba(${r},${g},${b},${a})`;
 }
