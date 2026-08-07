@@ -33,6 +33,10 @@ Tout tourne **dans le navigateur** — aucune donnée n'est envoyée à un serve
   Heure de départ « maintenant » ou fixée, et **heure d'arrivée estimée**.
 - **Points de passage manuels** : touche la carte près de la trace ou pose un
   point à ta position.
+- **Nature du sol, technicité et courabilité** : dérivées d'OpenStreetMap et
+  calculées automatiquement à l'import du GPX (Edge Function `runnav-terrain`).
+  Bandeau coloré sous le profil, surlignage de la carte, et indice de
+  courabilité par descente. Voir [docs/terrain.md](docs/terrain.md).
 - **Thème clair / sombre** : `Auto` (réglage du téléphone), `Clair` ou
   `Sombre`. Le mode clair est calibré pour le **plein soleil** — fond très
   clair, texte quasi noir, traits marqués. Réglable sur l'accueil, et

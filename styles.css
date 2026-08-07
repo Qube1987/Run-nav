@@ -377,6 +377,14 @@ body { overflow: hidden; }
 .terrain-legend .tl-sub { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--overlay-line); }
 .terrain-legend .tl-row { display: flex; align-items: center; gap: 7px; line-height: 1.5; white-space: nowrap; }
 .terrain-legend .tl-sw { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid var(--overlay-sw); }
+.terrain-legend .tl-foot {
+  margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--overlay-line);
+  font-size: 10.5px; opacity: 0.8;
+}
+.tl-redo {
+  background: none; border: none; padding: 2px 0; font: inherit;
+  color: var(--ink-blue); text-decoration: underline; cursor: pointer;
+}
 .map { width: 100%; height: 100%; }
 .profile-wrap { flex: 1.25 1 0; min-height: 0; }
 

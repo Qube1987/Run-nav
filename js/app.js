@@ -14,7 +14,7 @@ import {
 import {
   hashTrack, localSave, localLoad, localGet, localSet,
   cloudSaveFull, cloudSaveConfig, cloudLoad, makeCode,
-  cloudListRaces, cloudDeleteRace, fetchTerrain, fetchPois, buildPois, fetchPlace,
+  cloudListRaces, cloudDeleteRace, fetchTerrain, buildTerrain, fetchPois, buildPois, fetchPlace,
 } from './storage.js';
 import {
   isLoggedIn, currentUser, currentUserId, signup, login, logout,
@@ -118,7 +118,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal('Promesse rejeté
 
 // Version applicative (à garder en phase avec VERSION dans sw.js) — affichée sur
 // l'accueil pour diagnostiquer facilement quelle version tourne réellement.
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 // Pictogrammes & couleurs assignables à un point de passage.
 const WPT_ICONS = ['📍', '🥤', '🍽️', '⛲', '🚰', '🏨', '🛏️', '⛺', '🪦', '🚻', '⚕️', '🅿️', '🚌', '👜', '⛰️', '🌲', '📷', '⚠️', '🚩', '🏁'];
@@ -293,6 +293,16 @@ function init() {
   $('pf-full').addEventListener('click', () => setProfileView('full'));
   $('pf-zoom').addEventListener('click', () => setProfileView('climb'));
   $('pf-terrain').addEventListener('click', toggleTerrain);
+  // « relancer » dans la légende : la légende est rendue en innerHTML, d'où la
+  // délégation plutôt qu'un écouteur reposé à chaque rendu.
+  $('terrain-legend').addEventListener('click', async (e) => {
+    if (!e.target.closest('.tl-redo')) return;
+    e.stopPropagation();
+    toast('🪨 Reconnaissance du terrain en cours…');
+    const wasOn = state.terrainOn;
+    await loadTerrain(true);
+    if (state.terrain && wasOn) toggleTerrain();
+  });
   $('pf-poi').addEventListener('click', togglePois);
   $('poi-legend').addEventListener('click', onPoiLegendClick);
   $('pf-follow').addEventListener('click', () => {
@@ -1927,14 +1937,36 @@ function onBackButton() {
 }
 
 // ------------------------------------------------------------------ CALQUE NATURE DU SOL
-async function loadTerrain() {
+async function loadTerrain(force = false) {
   state.terrain = null; state.terrainOn = false;
   $('pf-terrain').hidden = true; $('pf-terrain').classList.remove('active');
   $('terrain-legend').hidden = true;
   if (state.map) state.map.setTerrain(null, TERRAIN_COLORS, false);
   if (state.profile) { state.profile.setTerrain(null, TERRAIN_COLORS, TERRAIN_LABELS); state.profile.setTerrainOn(false); }
   let data = null;
-  try { data = await fetchTerrain(state.gpxKey); } catch (_) { /* ignore */ }
+  if (!force) { try { data = await fetchTerrain(state.gpxKey); } catch (_) { /* ignore */ } }
+  // Jamais reconnu pour cette trace (import récent) : on lance l'analyse côté
+  // serveur, puis on relit — même schéma que les ravitos. Silencieux et non
+  // bloquant : si Overpass est saturé, le bouton reste masqué et on retentera à
+  // la prochaine ouverture.
+  if (!data && state.gpxKey && isLoggedIn()) {
+    try {
+      const out = await buildTerrain(state.gpxKey, samplePolyline(100), force);
+      if (out) {
+        data = await fetchTerrain(state.gpxKey);
+        // Signalé au PREMIER calcul seulement : à la réouverture d'une épreuve
+        // déjà traitée la réponse est « cached ».
+        if (out.status === 'built' && data) {
+          const pc = Math.round((data.coverage != null ? data.coverage : 1) * 100);
+          toast(pc >= 60
+            ? `🪨 Terrain reconnu sur ${pc} % du parcours.`
+            : `🪨 Terrain reconnu sur ${pc} % seulement — le reste n'est pas cartographié.`);
+        }
+      } else if (force) {
+        toast('Reconnaissance impossible pour l’instant (OpenStreetMap saturé). Réessaie plus tard.');
+      }
+    } catch (_) { /* ignore */ }
+  }
   if (!data || state.gpxKey == null) return;
   state.terrain = data;
   $('pf-terrain').hidden = false;         // le bouton n'apparaît que si des données existent
@@ -2013,6 +2045,15 @@ function renderTerrainLegend() {
     const rows = RUN_LEVELS.filter((l) => used.has(l.key)).map((l) =>
       `<div class="tl-row"><span class="tl-sw" style="background:${l.color}"></span>${l.label}</div>`).join('');
     html += '<div class="tl-title tl-sub">🏃 Descentes</div>' + rows;
+  }
+  // Part reconnue : OSM ne cartographie pas tout. Le dire évite de prendre un
+  // « Inconnu » majoritaire pour une panne de l'appli, et donne l'entrée pour
+  // relancer l'analyse une fois la trace mieux cartographiée.
+  if (state.terrain.coverage != null) {
+    const pc = Math.round(state.terrain.coverage * 100);
+    html += `<div class="tl-foot">Reconnu sur ${pc} % du parcours`
+      + (isLoggedIn() ? ' · <button type="button" class="tl-redo">relancer</button>' : '')
+      + '</div>';
   }
   el.innerHTML = html;
   el.hidden = false;

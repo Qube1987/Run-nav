@@ -77,6 +77,20 @@ export async function fetchTerrain(gpxKey) {
   return (data && Array.isArray(data.segs)) ? data : null;
 }
 
+/** Demande la reconnaissance du terrain d'une trace (Edge Function → Overpass →
+    cache). `pts` : polyline échantillonnée [[lat, lon, d], …]. Idempotent, sauf
+    `force` (relance explicite depuis la légende). Renvoie { status, segs,
+    coverage… }, ou null si le calcul n'a pas abouti — on retentera. */
+export async function buildTerrain(gpxKey, pts, force = false) {
+  if (!gpxKey || !Array.isArray(pts) || pts.length < 2) return null;
+  const res = await apiFetch('/functions/v1/runnav-terrain', {
+    method: 'POST', body: JSON.stringify({ gpxKey, pts, force }),
+  });
+  if (!res.ok) return null;
+  const out = await res.json();
+  return (out && out.status) ? out : null;
+}
+
 /** Points d'intérêt (eau, ravitaillement…) le long d'une épreuve, par empreinte GPX.
     Dérivés d'OpenStreetMap et mis en cache côté serveur : Overpass est limité en
     débit, on ne l'interroge jamais depuis le navigateur. */
